@@ -1,5 +1,8 @@
 {
-  "gateway": "auto",
-  "target_ssid": "gbsw314",
-  "interval_sec": 3
+    "gateway": "auto",
+    "target_ssid": "",
+    "interval_sec": 3,
+    "quiet_hours_enabled": true,
+    "quiet_hours_start": "01:00",
+    "quiet_hours_end": "06:00"
 }

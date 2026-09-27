@@ -1,7 +1,16 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+와이파이 끊김 감지 & 랭킹 대시보드
+게이트웨이(공유기)에 주기적으로 ping을 보내 연결 끊김/복구를 감지하고 지속 시간을 기록한다.
+실행: python wifi_monitor.py  ->  http://127.0.0.1:8765
+"""
+
 import json
 import os
 import platform
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -15,13 +24,19 @@ CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 
 PING_INTERVAL_SEC = 3
 PING_TIMEOUT_MS = 1000
-FAILS_TO_MARK_DISCONNECTED = 2  # 연속 실패 횟수
+FAILS_TO_MARK_DISCONNECTED = 2  # 연속 실패 횟수 (순간 지연으로 인한 오탐 방지)
 HTTP_PORT = 8765
+
+# 학교/기관 네트워크는 보안상 게이트웨이로 가는 ICMP(ping)를 막아두는 경우가 많다.
+# 그런 경우를 대비해, ping이 실패하면 공용 DNS 서버(53번 포트)로 TCP 연결을 시도해
+# "인터넷 자체는 되는지"를 한 번 더 확인한다.
+INTERNET_CHECK_HOSTS = ["1.1.1.1", "8.8.8.8"]
 
 IS_WINDOWS = platform.system() == "Windows"
 IS_MAC = platform.system() == "Darwin"
 
-
+# get_current_ssid()가 이 값을 반환하면 "이 환경/OS 버전에서는 SSID를 확인할 방법이 없다"는 뜻
+# (macOS 14.4+ 는 위치정보 권한 제약으로 커맨드라인에서 SSID를 못 가져오는 경우가 많음)
 SSID_UNKNOWN = object()
 
 _lock = threading.Lock()
@@ -37,6 +52,7 @@ def detect_default_gateway():
             lines = out.splitlines()
             for i, line in enumerate(lines):
                 if "Default Gateway" in line or "기본 게이트웨이" in line:
+                    # IP가 같은 줄이 아니라 다음 줄에 나오는 경우가 있어 2줄까지 함께 확인
                     for candidate_line in [line] + lines[i + 1 : i + 3]:
                         m = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", candidate_line)
                         if m:
@@ -89,11 +105,12 @@ def _get_mac_ssid():
         return SSID_UNKNOWN
 
     if "not associated" in out.lower():
-        return None  # 와이파이 미연결
+        return None  # 와이파이 미연결로 확인됨 (정상적으로 판별 가능한 상태)
     m = re.search(r"Current Wi-Fi Network:\s*(.+)", out)
     if m:
         ssid = m.group(1).strip()
         return ssid if ssid else SSID_UNKNOWN
+    # macOS 14.4+ 에서는 위치정보 권한 제약으로 값이 안 나오는 경우가 있음
     return SSID_UNKNOWN
 
 
@@ -115,7 +132,7 @@ def get_current_ssid():
                 if m:
                     ssid = m.group(1).strip()
                     return ssid if ssid else None
-            return None
+            return None  # SSID 줄 자체가 없으면 와이파이 미연결
         elif IS_MAC:
             return _get_mac_ssid()
         else:
@@ -127,7 +144,14 @@ def get_current_ssid():
 
 
 def load_config():
-    cfg = {"gateway": "auto", "interval_sec": PING_INTERVAL_SEC, "target_ssid": ""}
+    cfg = {
+        "gateway": "auto",
+        "interval_sec": PING_INTERVAL_SEC,
+        "target_ssid": "",
+        "quiet_hours_enabled": False,
+        "quiet_hours_start": "01:00",
+        "quiet_hours_end": "06:00",
+    }
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -148,6 +172,7 @@ def load_data():
 
 
 def save_data(data):
+    # 원자적 저장 (쓰는 도중 중단돼도 파일이 깨지지 않도록 임시파일 -> rename)
     tmp = DATA_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -162,6 +187,9 @@ STATE = {
     "connected": True,
     "data": load_data(),
     "last_checked": None,
+    "quiet_hours_enabled": False,
+    "quiet_hours_range": "",
+    "in_quiet_hours": False,
 }
 
 
@@ -185,8 +213,38 @@ def ping_once(ip):
         return False
 
 
+def check_internet(timeout=1.0):
+    """게이트웨이 ping이 막혀있는 네트워크(학교/기관 네트워크에서 흔함)를 대비한 대체 확인.
+    공용 DNS 서버의 53번 포트로 TCP 연결을 시도해서 인터넷 자체가 되는지 확인한다."""
+    for host in INTERNET_CHECK_HOSTS:
+        try:
+            with socket.create_connection((host, 53), timeout=timeout):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def now_iso():
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def parse_hhmm(s, default_minutes):
+    try:
+        h, m = s.split(":")
+        return int(h) * 60 + int(m)
+    except Exception:
+        return default_minutes
+
+
+def in_quiet_hours(now_dt, start_min, end_min):
+    """start_min == end_min 이면 비활성화. 자정을 넘어가는 구간(예: 23:00~06:00)도 지원."""
+    if start_min == end_min:
+        return False
+    cur = now_dt.hour * 60 + now_dt.minute
+    if start_min < end_min:
+        return start_min <= cur < end_min
+    return cur >= start_min or cur < end_min
 
 
 def monitor_loop():
@@ -200,19 +258,33 @@ def monitor_loop():
 
     target_ssid = (cfg.get("target_ssid") or "").strip()
 
+    quiet_enabled = bool(cfg.get("quiet_hours_enabled", False))
+    quiet_start_str = cfg.get("quiet_hours_start", "01:00")
+    quiet_end_str = cfg.get("quiet_hours_end", "06:00")
+    quiet_start_min = parse_hhmm(quiet_start_str, 60)
+    quiet_end_min = parse_hhmm(quiet_end_str, 360)
+
     with _lock:
         STATE["gateway"] = gateway
         STATE["target_ssid"] = target_ssid
+        STATE["quiet_hours_enabled"] = quiet_enabled
+        STATE["quiet_hours_range"] = f"{quiet_start_str}~{quiet_end_str}"
+        STATE["in_quiet_hours"] = False
         data = STATE["data"]
-        # 프로그램이 재시작됐다면 원래 시작 시간 이어서 기록
+        # 끊긴 상태에서 프로그램이 재시작됐다면 원래 시작 시각을 이어서 사용
         STATE["connected"] = data.get("ongoing") is None
 
+    if quiet_enabled:
+        print(f"[야간모드] {quiet_start_str}~{quiet_end_str} 사이에는 끊김을 기록하지 않습니다.")
+
+    # SSID 확인이 이 환경에서 실제로 가능한지 시작할 때 한 번만 검사 (macOS는 OS 버전에 따라 불가능할 수 있음)
     ssid_check_ok = False
     if target_ssid:
         probe = get_current_ssid()
         ssid_check_ok = probe is not SSID_UNKNOWN
         if not ssid_check_ok:
-            print(f"[알림] 이 환경에서는 와이파이 SSID를 확인할 수 없어 '{target_ssid}' 지정은 무시하고 " f"게이트웨이 응답만으로 감시합니다.")
+            print(f"[알림] 이 환경에서는 와이파이 SSID를 확인할 수 없어 '{target_ssid}' 지정은 무시하고 "
+                  f"게이트웨이 응답만으로 감시합니다.")
 
     with _lock:
         STATE["ssid_check_ok"] = ssid_check_ok
@@ -225,12 +297,50 @@ def monitor_loop():
     consecutive_fails = 0
 
     while True:
+        now_dt = datetime.now()
+        quiet_now = quiet_enabled and in_quiet_hours(now_dt, quiet_start_min, quiet_end_min)
+
+        with _lock:
+            was_quiet = STATE["in_quiet_hours"]
+            STATE["in_quiet_hours"] = quiet_now
+            data = STATE["data"]
+
+            if quiet_now and not was_quiet:
+                # 야간 시간대 진입: 진행 중이던 끊김이 있으면 지금 시점으로 마감하고 이후는 기록하지 않음
+                if not STATE["connected"]:
+                    ongoing = data.get("ongoing")
+                    end = now_iso()
+                    if ongoing:
+                        start_dt = datetime.fromisoformat(ongoing["start"])
+                        end_dt = datetime.fromisoformat(end)
+                        duration = max(0, int((end_dt - start_dt).total_seconds()))
+                        data["records"].append(
+                            {"start": ongoing["start"], "end": end, "duration_sec": duration}
+                        )
+                    data["ongoing"] = None
+                    save_data(data)
+                STATE["connected"] = True
+                consecutive_fails = 0
+                print(f"[야간모드 시작] {now_iso()} 부터 감시를 일시 중단합니다.")
+            elif not quiet_now and was_quiet:
+                consecutive_fails = 0
+                print(f"[야간모드 종료] {now_iso()} 부터 다시 감시를 시작합니다.")
+
+        if quiet_now:
+            with _lock:
+                STATE["last_checked"] = now_iso()
+                STATE["current_ssid"] = None
+            time.sleep(PING_INTERVAL_SEC)
+            continue
+
         current_ssid = get_current_ssid() if (target_ssid and ssid_check_ok) else None
+        # 게이트웨이 ping이 막힌 네트워크 대비: ping이 실패해도 공용 DNS 연결이 되면 "연결됨"으로 판단
+        reachable = ping_once(gateway) or check_internet()
         if target_ssid and ssid_check_ok:
-            # SSID가 다르면(다른 와이파이/핫스팟/유선랜/미접속) ping 없이 곧바로 끊김 처리
-            ok = (current_ssid == target_ssid) and ping_once(gateway)
+            # SSID가 다르면(다른 와이파이/핫스팟/유선랜/미접속) 곧바로 끊김 처리
+            ok = (current_ssid == target_ssid) and reachable
         else:
-            ok = ping_once(gateway)
+            ok = reachable
 
         with _lock:
             STATE["last_checked"] = now_iso()
@@ -286,6 +396,9 @@ def build_status_payload():
         current_ssid = STATE["current_ssid"]
         ssid_check_ok = STATE["ssid_check_ok"]
         last_checked = STATE["last_checked"]
+        quiet_hours_enabled = STATE["quiet_hours_enabled"]
+        quiet_hours_range = STATE["quiet_hours_range"]
+        in_quiet_hours = STATE["in_quiet_hours"]
         ongoing = STATE["data"].get("ongoing")
     return {
         "connected": connected,
@@ -295,6 +408,9 @@ def build_status_payload():
         "ssid_check_ok": ssid_check_ok,
         "last_checked": last_checked,
         "current_outage_start": ongoing["start"] if ongoing else None,
+        "quiet_hours_enabled": quiet_hours_enabled,
+        "quiet_hours_range": quiet_hours_range,
+        "in_quiet_hours": in_quiet_hours,
     }
 
 
@@ -323,6 +439,7 @@ def build_history_payload():
     }
 
 
+# 외부 리소스 없이 완전히 로컬에서 동작 (와이파이가 끊겨도 열림)
 HTML_PAGE = """<!doctype html>
 <html lang="ko">
 <head>
@@ -348,6 +465,7 @@ HTML_PAGE = """<!doctype html>
   .dot{width:14px; height:14px; border-radius:50%; flex-shrink:0;}
   .dot.ok{background:var(--ok); box-shadow:0 0 8px var(--ok);}
   .dot.bad{background:var(--bad); box-shadow:0 0 8px var(--bad);}
+  .dot.night{background:var(--accent); box-shadow:0 0 8px var(--accent);}
   .status-text{font-size:16px; font-weight:600;}
   .status-detail{color:var(--muted); font-size:13px; margin-top:2px;}
   .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:24px;}
@@ -393,6 +511,7 @@ HTML_PAGE = """<!doctype html>
     </tbody>
   </table>
 
+  <div class="footer">이 페이지는 인터넷이 아니라 이 컴퓨터(localhost)에서 열리므로, 와이파이가 끊긴 동안에도 계속 볼 수 있습니다.</div>
 
 <script>
 let outageStart = null;
@@ -422,11 +541,19 @@ async function refreshStatus(){
       }
     }
     line += (d.last_checked ? " · " + new Date(d.last_checked).toLocaleTimeString("ko-KR") + " 마지막 확인" : "");
+    if(d.quiet_hours_enabled){
+      line += " · 야간 미감시: " + d.quiet_hours_range;
+    }
     document.getElementById("gateway-line").textContent = line;
     const dot = document.getElementById("dot");
     const st = document.getElementById("status-text");
     const detail = document.getElementById("status-detail");
-    if(d.connected){
+    if(d.in_quiet_hours){
+      dot.className = "dot night";
+      st.textContent = "🌙 야간 미감시 시간대 (" + d.quiet_hours_range + ")";
+      detail.textContent = "";
+      outageStart = null;
+    } else if(d.connected){
       dot.className = "dot ok";
       st.textContent = "🟢 연결됨";
       detail.textContent = "";
