@@ -4,5 +4,5 @@
     "interval_sec": 3,
     "quiet_hours_enabled": true,
     "quiet_hours_start": "01:00",
-    "quiet_hours_end": "06:00"
+    "quiet_hours_end": "06:01"
 }

@@ -275,7 +275,7 @@ def monitor_loop():
         STATE["connected"] = data.get("ongoing") is None
 
     if quiet_enabled:
-        print(f"[야간모드] {quiet_start_str}~{quiet_end_str} 사이에는 끊김을 기록하지 않습니다.")
+        print(f"{quiet_start_str}~{quiet_end_str} 사이에는 끊김을 기록하지 않습니다.")
 
     # SSID 확인이 이 환경에서 실제로 가능한지 시작할 때 한 번만 검사 (macOS는 OS 버전에 따라 불가능할 수 있음)
     ssid_check_ok = False
@@ -321,10 +321,10 @@ def monitor_loop():
                     save_data(data)
                 STATE["connected"] = True
                 consecutive_fails = 0
-                print(f"[야간모드 시작] {now_iso()} 부터 감시를 일시 중단합니다.")
+                print(f"{now_iso()} 부터 감시를 중단합니다.")
             elif not quiet_now and was_quiet:
                 consecutive_fails = 0
-                print(f"[야간모드 종료] {now_iso()} 부터 다시 감시를 시작합니다.")
+                print(f"{now_iso()} 부터 감시를 시작합니다.")
 
         if quiet_now:
             with _lock:
@@ -444,77 +444,132 @@ HTML_PAGE = """<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>와이파이 끊김 감시</title>
+<title>와이파이 끊김 갤러리</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  :root{
-    --bg:#0b0f14; --card:#121821; --border:#212a35; --text:#e6edf3; --muted:#8b98a5;
-    --ok:#3fb950; --bad:#f85149; --accent:#58a6ff;
-  }
   *{box-sizing:border-box;}
   body{
-    margin:0; padding:24px; background:var(--bg); color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;
+    margin:0; background:#fff; color:#333; font-size:13px;
+    font-family:"Apple SD Gothic Neo","Malgun Gothic","맑은 고딕","Dotum","돋움",sans-serif;
   }
-  h1{font-size:20px; margin:0 0 4px;}
-  .sub{color:var(--muted); font-size:13px; margin-bottom:20px;}
-  .status{
-    display:flex; align-items:center; gap:12px; padding:18px 20px; border-radius:12px;
-    border:1px solid var(--border); background:var(--card); margin-bottom:20px;
+  a{color:#333; text-decoration:none;}
+  .topbar{background:#3b4890; height:42px;}
+  .topbar .inner{max-width:980px; margin:0 auto; padding:0 12px; display:flex; align-items:center; height:42px;}
+  .logo{color:#fff; font-weight:bold; font-size:20px; letter-spacing:-1px;}
+  .logo span{color:#ffd400;}
+  .wrap{max-width:980px; margin:0 auto; padding:16px 12px 40px;}
+
+  .gall-head{border-bottom:2px solid #3b4890; padding-bottom:8px; display:flex; align-items:flex-end; justify-content:space-between; gap:8px; flex-wrap:wrap;}
+  .gall-title{font-size:22px; font-weight:bold; color:#3b4890; letter-spacing:-1px;}
+  .gall-title small{font-size:12px; color:#999; font-weight:normal; margin-left:6px; letter-spacing:0;}
+  .gall-sub{color:#777; font-size:12px; margin:8px 0 12px; line-height:1.6; word-break:keep-all;}
+
+  .tabs{display:flex; border-bottom:1px solid #ccc; margin-bottom:0;}
+  .tabs div{padding:8px 14px; font-size:13px; color:#666; border:1px solid transparent; border-bottom:none; margin-bottom:-1px;}
+  .tabs .on{color:#3b4890; font-weight:bold; border-color:#ccc; background:#fff;}
+  .tab-row{display:flex; justify-content:space-between; align-items:flex-end; border-bottom:1px solid #ccc;}
+  .tab-row .tabs{border-bottom:none;}
+  .sort{display:flex; gap:4px; padding-bottom:5px;}
+  .sort button{
+    font:inherit; font-size:12px; color:#666; background:#fff; border:1px solid #ccc;
+    padding:4px 10px; cursor:pointer; border-radius:2px; display:flex; align-items:center; gap:4px;
   }
-  .dot{width:14px; height:14px; border-radius:50%; flex-shrink:0;}
-  .dot.ok{background:var(--ok); box-shadow:0 0 8px var(--ok);}
-  .dot.bad{background:var(--bad); box-shadow:0 0 8px var(--bad);}
-  .dot.night{background:var(--accent); box-shadow:0 0 8px var(--accent);}
-  .status-text{font-size:16px; font-weight:600;}
-  .status-detail{color:var(--muted); font-size:13px; margin-top:2px;}
-  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:24px;}
-  .card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px;}
-  .card .label{color:var(--muted); font-size:12px; margin-bottom:6px;}
-  .card .value{font-size:18px; font-weight:700;}
-  table{width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden;}
-  th,td{padding:10px 14px; text-align:left; font-size:13px; border-bottom:1px solid var(--border);}
-  th{color:var(--muted); font-weight:600; font-size:12px;}
-  tr:last-child td{border-bottom:none;}
-  .rank1{color:#f0b429; font-weight:700;}
-  .rank2{color:#c9d1d9; font-weight:700;}
-  .rank3{color:#cd7f32; font-weight:700;}
-  .empty{color:var(--muted); padding:24px; text-align:center;}
-  .footer{color:var(--muted); font-size:12px; margin-top:20px;}
+  .sort button:hover{background:#f5f7fb;}
+  .sort button.on{color:#fff; background:#3b4890; border-color:#3b4890; font-weight:bold;}
+  .sort .arrow{font-size:10px;}
+
+  .info-box{display:grid; grid-template-columns:repeat(4,1fr); border:1px solid #ccc; border-top:none; background:#f8f8f8; margin-bottom:14px;}
+  .info-box div{padding:9px 10px; text-align:center; border-right:1px solid #e1e1e1;}
+  .info-box div:last-child{border-right:none;}
+  .info-box .k{color:#888; font-size:11px; display:block; margin-bottom:3px;}
+  .info-box .v{color:#3b4890; font-weight:bold; font-size:14px;}
+
+  table{width:100%; border-collapse:collapse; border-top:2px solid #3b4890; table-layout:fixed;}
+  th{background:#fafafa; color:#555; font-weight:normal; font-size:12px; padding:8px 4px; border-bottom:1px solid #ccc;}
+  td{padding:8px 4px; border-bottom:1px solid #eee; text-align:center; font-size:13px; color:#666; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  td.title{text-align:left; padding-left:10px; color:#333;}
+  tbody tr:hover td{background:#f5f7fb;}
+  .col-no{width:60px;} .col-writer{width:110px;} .col-start,.col-end{width:140px;} .col-dur{width:100px;}
+
+  tr.notice td{background:#fff8f8; font-weight:bold;}
+  tr.notice.ok td{background:#f6fbf6;}
+  tr.notice.night td{background:#f5f7fd;}
+  .tag{display:inline-block; font-size:11px; font-weight:bold; color:#fff; padding:1px 6px; border-radius:2px; background:#d31900;}
+  .tag.ok{background:#2c9c3d;}
+  .tag.night{background:#3b4890;}
+  .sub-detail{color:#d31900; font-weight:normal; margin-left:6px;}
+
+  .best{display:inline-block; font-size:10px; color:#fff; background:#d31900; padding:0 4px; margin-right:5px; border-radius:2px; vertical-align:1px;}
+  tr.r1 td.title{color:#d31900; font-weight:bold;}
+  tr.r2 td.title{color:#e05a00; font-weight:bold;}
+  tr.r3 td.title{color:#b8860b; font-weight:bold;}
+  .cmt{color:#d31900; font-size:11px; margin-left:3px;}
+  .writer{color:#333;}
+  .ip{color:#999; font-size:11px;}
+  .empty{color:#999; padding:30px 0 !important;}
+
+  .footer{margin-top:24px; padding-top:12px; border-top:1px solid #ddd; color:#999; font-size:11px; text-align:center; line-height:1.7;}
+
+  @media (max-width:640px){
+    table{table-layout:auto;}
+    th.col-writer,th.col-end,th.col-start,td.c-writer,td.c-end,td.c-start{display:none;}
+    td.title{white-space:normal; line-height:1.4;}
+    .info-box{grid-template-columns:repeat(2,1fr);}
+    .info-box div:nth-child(2){border-right:none;}
+    .info-box div:nth-child(-n+2){border-bottom:1px solid #e1e1e1;}
+    td,th{font-size:12px;}
+  }
 </style>
 </head>
 <body>
-  <h1>📡 와이파이 끊김 감시</h1>
-  <div class="sub" id="gateway-line">게이트웨이 확인 중…</div>
+  <div class="topbar"><div class="inner"><div class="logo">gbsw<span>inside</span></div></div></div>
 
-  <div class="status">
-    <div class="dot ok" id="dot"></div>
-    <div>
-      <div class="status-text" id="status-text">확인 중…</div>
-      <div class="status-detail" id="status-detail"></div>
+  <div class="wrap">
+    <div class="gall-head">
+      <div class="gall-title">와이파이 끊김 갤러리<small>gbsw314</small></div>
+    </div>
+    <div class="gall-sub" id="gateway-line">게이트웨이 확인 중…</div>
+
+    <div class="tab-row">
+      <div class="tabs"><div class="on">전체글</div><div>개념글</div><div>공지</div></div>
+      <div class="sort">
+        <button type="button" id="sort-pop" class="on">인기순</button>
+        <button type="button" id="sort-date">날짜순 <span class="arrow" id="date-arrow">▼</span></button>
+      </div>
+    </div>
+    <div class="info-box">
+      <div><span class="k">총 끊김 횟수</span><span class="v" id="c-count">-</span></div>
+      <div><span class="k">총 끊긴 시간</span><span class="v" id="c-total">-</span></div>
+      <div><span class="k">최장 끊김</span><span class="v" id="c-longest">-</span></div>
+      <div><span class="k">평균 끊김</span><span class="v" id="c-avg">-</span></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th class="col-no">순위</th><th>제목</th><th class="col-writer">글쓴이</th><th class="col-start">시작</th><th class="col-end">종료</th><th class="col-dur">지속</th></tr>
+      </thead>
+      <tbody>
+        <tr class="notice" id="notice-row">
+          <td><span class="tag" id="tag">공지</span></td>
+          <td class="title" colspan="5"><span id="status-text">확인 중…</span><span class="sub-detail" id="status-detail"></span></td>
+        </tr>
+      </tbody>
+      <tbody id="ranking-body">
+        <tr><td colspan="6" class="empty">기록 불러오는 중…</td></tr>
+      </tbody>
+    </table>
+
+    <div class="footer">
+      이 갤러리는 기숙사 와이파이 끊김을 자동으로 기록합니다. 순위는 오래 끊긴 순입니다.<br>
+      Copyright © gbswinside. All rights reserved.
     </div>
   </div>
 
-  <div class="cards">
-    <div class="card"><div class="label">총 끊김 횟수</div><div class="value" id="c-count">-</div></div>
-    <div class="card"><div class="label">총 끊긴 시간</div><div class="value" id="c-total">-</div></div>
-    <div class="card"><div class="label">최장 끊김</div><div class="value" id="c-longest">-</div></div>
-    <div class="card"><div class="label">평균 끊김</div><div class="value" id="c-avg">-</div></div>
-  </div>
-
-  <table>
-    <thead>
-      <tr><th>순위</th><th>시작 시각</th><th>종료 시각</th><th>지속 시간</th></tr>
-    </thead>
-    <tbody id="ranking-body">
-      <tr><td colspan="4" class="empty">기록 불러오는 중…</td></tr>
-    </tbody>
-  </table>
-
-  <div class="footer">이 페이지는 인터넷이 아니라 이 컴퓨터(localhost)에서 열리므로, 와이파이가 끊긴 동안에도 계속 볼 수 있습니다.</div>
-
 <script>
 let outageStart = null;
+let records = [];
+let sortMode = "pop";     // "pop" = 인기순(오래 끊긴 순), "date" = 날짜순
+let dateDesc = true;      // 날짜순일 때 true = 최신순 ▼, false = 오래된순 ▲
 
 function fmtDuration(totalSec){
   totalSec = Math.max(0, Math.floor(totalSec));
@@ -528,39 +583,43 @@ function fmtDuration(totalSec){
   return parts.join(" ");
 }
 
+function fmtDate(iso){
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2,"0");
+  return (d.getMonth()+1) + "." + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+}
+
 async function refreshStatus(){
   try{
     const res = await fetch("/api/status");
     const d = await res.json();
-    let line = "감시 대상(게이트웨이): " + (d.gateway || "-");
+    let line = "감시 대상: " + (d.gateway || "-");
     if(d.target_ssid){
       if(d.ssid_check_ok){
         line += " · 지정 와이파이: " + d.target_ssid + " (현재: " + (d.current_ssid || "미접속") + ")";
       } else {
-        line += " · 이 기기에서는 SSID 확인 불가 — 게이트웨이 응답만으로 판단 중";
+        line += " · SSID 확인 불가 — 게이트웨이 응답으로 판단";
       }
     }
-    line += (d.last_checked ? " · " + new Date(d.last_checked).toLocaleTimeString("ko-KR") + " 마지막 확인" : "");
-    if(d.quiet_hours_enabled){
-      line += " · 야간 미감시: " + d.quiet_hours_range;
-    }
+    if(d.last_checked) line += " · 마지막 확인 " + new Date(d.last_checked).toLocaleTimeString("ko-KR");
+    if(d.quiet_hours_enabled) line += " · 미감시 " + d.quiet_hours_range;
     document.getElementById("gateway-line").textContent = line;
-    const dot = document.getElementById("dot");
+
+    const row = document.getElementById("notice-row");
+    const tag = document.getElementById("tag");
     const st = document.getElementById("status-text");
     const detail = document.getElementById("status-detail");
     if(d.in_quiet_hours){
-      dot.className = "dot night";
-      st.textContent = "🌙 야간 미감시 시간대 (" + d.quiet_hours_range + ")";
-      detail.textContent = "";
-      outageStart = null;
+      row.className = "notice night"; tag.className = "tag night"; tag.textContent = "야간";
+      st.textContent = "지금은 미감시 시간대임 (" + d.quiet_hours_range + ")";
+      detail.textContent = ""; outageStart = null;
     } else if(d.connected){
-      dot.className = "dot ok";
-      st.textContent = "🟢 연결됨";
-      detail.textContent = "";
-      outageStart = null;
+      row.className = "notice ok"; tag.className = "tag ok"; tag.textContent = "정상";
+      st.textContent = "와이파이 정상 연결 중";
+      detail.textContent = ""; outageStart = null;
     } else {
-      dot.className = "dot bad";
-      st.textContent = "🔴 끊김";
+      row.className = "notice"; tag.className = "tag"; tag.textContent = "속보";
+      st.textContent = "[속보] 와이파이 지금 끊김";
       outageStart = d.current_outage_start ? new Date(d.current_outage_start) : null;
     }
   }catch(e){
@@ -571,7 +630,7 @@ async function refreshStatus(){
 function tickElapsed(){
   if(outageStart){
     const sec = (Date.now() - outageStart.getTime())/1000;
-    document.getElementById("status-detail").textContent = "경과 시간: " + fmtDuration(sec);
+    document.getElementById("status-detail").textContent = "경과 " + fmtDuration(sec);
   }
 }
 
@@ -584,19 +643,58 @@ async function refreshHistory(){
     document.getElementById("c-longest").textContent = d.stats.longest_human;
     document.getElementById("c-avg").textContent = d.stats.avg_human;
 
-    const body = document.getElementById("ranking-body");
-    if(d.ranking.length === 0){
-      body.innerHTML = '<tr><td colspan="4" class="empty">아직 기록된 끊김이 없습니다.</td></tr>';
-      return;
-    }
-    body.innerHTML = d.ranking.map(r => {
-      const cls = r.rank===1 ? "rank1" : r.rank===2 ? "rank2" : r.rank===3 ? "rank3" : "";
-      const startStr = new Date(r.start).toLocaleString("ko-KR");
-      const endStr = new Date(r.end).toLocaleString("ko-KR");
-      return `<tr><td class="${cls}">${r.rank}</td><td>${startStr}</td><td>${endStr}</td><td>${r.duration_human}</td></tr>`;
-    }).join("");
+    records = d.ranking;
+    renderList();
   }catch(e){}
 }
+
+function renderList(){
+  const body = document.getElementById("ranking-body");
+  if(records.length === 0){
+    body.innerHTML = '<tr><td colspan="6" class="empty">등록된 게시물이 없습니다.</td></tr>';
+    return;
+  }
+  const list = records.slice();
+  if(sortMode === "date"){
+    list.sort((a, b) => {
+      const diff = new Date(a.start) - new Date(b.start);
+      return dateDesc ? -diff : diff;
+    });
+  } else {
+    list.sort((a, b) => a.rank - b.rank);
+  }
+  body.innerHTML = list.map(r => {
+    const cls = r.rank<=3 ? "r"+r.rank : "";
+    const best = r.rank<=3 ? '<span class="best">개념</span>' : "";
+    const mins = Math.floor(r.duration_sec/60);
+    return `<tr class="${cls}">
+      <td>${r.rank}</td>
+      <td class="title">${best}와이파이 ${r.duration_human} 동안 끊김<span class="cmt">[${mins}]</span></td>
+      <td class="c-writer"><span class="writer">ㅇㅇ</span> <span class="ip">(172.28)</span></td>
+      <td class="c-start">${fmtDate(r.start)}</td>
+      <td class="c-end">${fmtDate(r.end)}</td>
+      <td>${r.duration_human}</td>
+    </tr>`;
+  }).join("");
+}
+
+function updateSortButtons(){
+  document.getElementById("sort-pop").className = sortMode === "pop" ? "on" : "";
+  document.getElementById("sort-date").className = sortMode === "date" ? "on" : "";
+  document.getElementById("date-arrow").textContent = dateDesc ? "▼" : "▲";
+  document.getElementById("sort-date").title = dateDesc ? "최신순 (누르면 오래된순)" : "오래된순 (누르면 최신순)";
+}
+
+document.getElementById("sort-pop").onclick = () => {
+  sortMode = "pop";
+  updateSortButtons(); renderList();
+};
+document.getElementById("sort-date").onclick = () => {
+  if(sortMode === "date") dateDesc = !dateDesc;  // 이미 날짜순이면 화살표 방향 전환
+  else sortMode = "date";
+  updateSortButtons(); renderList();
+};
+updateSortButtons();
 
 refreshStatus(); refreshHistory();
 setInterval(refreshStatus, 2000);
