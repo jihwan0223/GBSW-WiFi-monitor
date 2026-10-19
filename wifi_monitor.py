@@ -453,25 +453,28 @@ HTML_PAGE = """<!doctype html>
     font-family:"Apple SD Gothic Neo","Malgun Gothic","맑은 고딕","Dotum","돋움",sans-serif;
   }
   a{color:#333; text-decoration:none;}
-  .topbar{background:#3b4890; height:42px;}
+  button{font:inherit;}
+  .topbar{background:#3b4890;}
   .topbar .inner{max-width:980px; margin:0 auto; padding:0 12px; display:flex; align-items:center; height:42px;}
   .logo{color:#fff; font-weight:bold; font-size:20px; letter-spacing:-1px;}
   .logo span{color:#ffd400;}
+  .gnb{background:#29367c; border-bottom:1px solid #1f2a63;}
+  .gnb .inner{max-width:980px; margin:0 auto; padding:0 12px; display:flex; gap:18px; height:32px; align-items:center; overflow:hidden; white-space:nowrap;}
+  .gnb span{color:#c9cfee; font-size:12px;}
+  .gnb span.on{color:#fff; font-weight:bold;}
   .wrap{max-width:980px; margin:0 auto; padding:16px 12px 40px;}
 
-  .gall-head{border-bottom:2px solid #3b4890; padding-bottom:8px; display:flex; align-items:flex-end; justify-content:space-between; gap:8px; flex-wrap:wrap;}
+  .gall-head{border-bottom:2px solid #3b4890; padding-bottom:8px; margin-bottom:12px; display:flex; align-items:flex-end; justify-content:space-between; gap:8px; flex-wrap:wrap;}
   .gall-title{font-size:22px; font-weight:bold; color:#3b4890; letter-spacing:-1px;}
-  .gall-title small{font-size:12px; color:#999; font-weight:normal; margin-left:6px; letter-spacing:0;}
-  .gall-sub{color:#777; font-size:12px; margin:8px 0 12px; line-height:1.6; word-break:keep-all;}
 
-  .tabs{display:flex; border-bottom:1px solid #ccc; margin-bottom:0;}
-  .tabs div{padding:8px 14px; font-size:13px; color:#666; border:1px solid transparent; border-bottom:none; margin-bottom:-1px;}
-  .tabs .on{color:#3b4890; font-weight:bold; border-color:#ccc; background:#fff;}
   .tab-row{display:flex; justify-content:space-between; align-items:flex-end; border-bottom:1px solid #ccc;}
-  .tab-row .tabs{border-bottom:none;}
+  .tabs{display:flex;}
+  .tabs button{padding:8px 14px; font-size:13px; color:#666; background:none; border:1px solid transparent; border-bottom:none; margin-bottom:-1px; cursor:pointer;}
+  .tabs button.on{color:#3b4890; font-weight:bold; border-color:#ccc; background:#fff;}
+  .tabs .cnt{color:#d31900; font-size:11px; font-weight:normal; margin-left:2px;}
   .sort{display:flex; gap:4px; padding-bottom:5px;}
   .sort button{
-    font:inherit; font-size:12px; color:#666; background:#fff; border:1px solid #ccc;
+    font-size:12px; color:#666; background:#fff; border:1px solid #ccc;
     padding:4px 10px; cursor:pointer; border-radius:2px; display:flex; align-items:center; gap:4px;
   }
   .sort button:hover{background:#f5f7fb;}
@@ -484,12 +487,23 @@ HTML_PAGE = """<!doctype html>
   .info-box .k{color:#888; font-size:11px; display:block; margin-bottom:3px;}
   .info-box .v{color:#3b4890; font-weight:bold; font-size:14px;}
 
-  table{width:100%; border-collapse:collapse; border-top:2px solid #3b4890; table-layout:fixed;}
-  th{background:#fafafa; color:#555; font-weight:normal; font-size:12px; padding:8px 4px; border-bottom:1px solid #ccc;}
-  td{padding:8px 4px; border-bottom:1px solid #eee; text-align:center; font-size:13px; color:#666; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  td.title{text-align:left; padding-left:10px; color:#333;}
-  tbody tr:hover td{background:#f5f7fb;}
-  .col-no{width:60px;} .col-writer{width:110px;} .col-start,.col-end{width:140px;} .col-dur{width:100px;}
+  .list{width:100%; border-collapse:collapse; border-top:2px solid #3b4890; table-layout:fixed;}
+  .list th{background:#fafafa; color:#555; font-weight:normal; font-size:12px; padding:8px 4px; border-bottom:1px solid #ccc;}
+  .list td{padding:8px 4px; border-bottom:1px solid #eee; text-align:center; font-size:13px; color:#666; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .list td.title{text-align:left; padding-left:10px;}
+  .list td.title a{color:#333;}
+  .list td.title a:visited{color:#770088;}
+  .list td.title a:hover{text-decoration:underline;}
+  .list tbody tr:hover td{background:#f5f7fb;}
+  .list tr.cur td{background:#eef1fa;}
+  .list tr.cur td.c-no{color:#3b4890; font-weight:bold;}
+  .col-no{width:60px;} .col-head{width:64px;} .col-writer{width:110px;} .col-date{width:90px;} .col-time{width:70px;} .col-dur{width:100px;}
+  .c-head{color:#888 !important; font-size:12px !important;}
+  .c-head.big{color:#d31900 !important; font-weight:bold;}
+
+  .ico{display:inline-block; width:11px; height:13px; margin-right:6px; vertical-align:-2px; border:1px solid #9aa3c3; border-radius:1px;
+       background:repeating-linear-gradient(#fff 0 2px,#b8bfd8 2px 3px) 2px 2px/5px 8px no-repeat #fff;}
+  .ico.best{border-color:#d31900; background-color:#fff3f0;}
 
   tr.notice td{background:#fff8f8; font-weight:bold;}
   tr.notice.ok td{background:#f6fbf6;}
@@ -500,38 +514,81 @@ HTML_PAGE = """<!doctype html>
   .sub-detail{color:#d31900; font-weight:normal; margin-left:6px;}
 
   .best{display:inline-block; font-size:10px; color:#fff; background:#d31900; padding:0 4px; margin-right:5px; border-radius:2px; vertical-align:1px;}
-  tr.r1 td.title{color:#d31900; font-weight:bold;}
-  tr.r2 td.title{color:#e05a00; font-weight:bold;}
-  tr.r3 td.title{color:#b8860b; font-weight:bold;}
+  tr.r1 td.title a{color:#d31900; font-weight:bold;}
+  tr.r2 td.title a{color:#e05a00; font-weight:bold;}
+  tr.r3 td.title a{color:#b8860b; font-weight:bold;}
   .cmt{color:#d31900; font-size:11px; margin-left:3px;}
   .writer{color:#333;}
   .ip{color:#999; font-size:11px;}
   .empty{color:#999; padding:30px 0 !important;}
 
+  .paging{display:flex; justify-content:center; gap:2px; margin:16px 0 0; flex-wrap:wrap;}
+  .paging button{min-width:26px; padding:3px 6px; background:none; border:1px solid transparent; color:#333; cursor:pointer; font-size:13px;}
+  .paging button:hover{text-decoration:underline;}
+  .paging button.on{color:#d31900; font-weight:bold; border-color:#ccc;}
+
+  .view{border-top:2px solid #3b4890; margin-bottom:24px;}
+  .view-head{padding:12px 10px 10px; border-bottom:1px solid #ddd;}
+  .view-title{font-size:17px; font-weight:bold; color:#333; margin:0 0 8px; letter-spacing:-0.5px; word-break:keep-all;}
+  .view-title .h{color:#3b4890; margin-right:4px;}
+  .view-meta{display:flex; justify-content:space-between; gap:6px; flex-wrap:wrap; color:#999; font-size:12px;}
+  .view-meta .bar{color:#ddd; margin:0 6px;}
+  .view-body{padding:22px 12px 6px; line-height:1.9; font-size:14px; color:#222;}
+  .view-body p{margin:0 0 4px;}
+  .view-body .red{color:#d31900;}
+  .detail{border-collapse:collapse; border-top:1px solid #bbb; width:100%; max-width:520px; margin:20px 0 6px; font-size:13px;}
+  .detail th{width:110px; text-align:left; font-weight:normal; color:#666; background:#f8f8f8; padding:7px 10px; border-bottom:1px solid #e5e5e5;}
+  .detail td{padding:7px 10px; border-bottom:1px solid #e5e5e5; color:#333;}
+  .detail .gray{color:#999; font-size:12px;}
+  .tl-wrap{max-width:520px; margin:18px 0 10px;}
+  .tl-label{font-size:12px; color:#666; margin-bottom:4px;}
+  .tl{position:relative; height:22px; background:#eef0f6; border:1px solid #d5d9e8;}
+  .tl .q{position:absolute; top:0; bottom:0; background:repeating-linear-gradient(45deg,#d8dcea 0 3px,#eef0f6 3px 7px);}
+  .tl a{position:absolute; top:0; bottom:0; min-width:3px; background:#f2a493;}
+  .tl a.me{background:#d31900; z-index:1;}
+  .tl-scale{display:flex; justify-content:space-between; font-size:11px; color:#999; margin-top:3px;}
+  .recom{display:flex; justify-content:center; gap:10px; padding:22px 0; border-bottom:1px solid #eee;}
+  .recom button{width:100px; border:1px solid #ccc; background:#fff; border-radius:4px; padding:8px 0 7px; cursor:pointer; color:#555; font-size:12px;}
+  .recom button .n{display:block; font-size:19px; font-weight:bold; color:#d31900; margin-bottom:2px;}
+  .recom button.down .n{color:#666;}
+  .recom button.on{border-color:#d31900; background:#fff5f3;}
+  .recom button.down.on{border-color:#666; background:#f3f3f3;}
+  .view-nav a{display:flex; gap:12px; padding:8px 10px; border-bottom:1px solid #eee; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;}
+  .view-nav a:hover{background:#f5f7fb;}
+  .view-nav .k{color:#999; flex:none; width:50px;}
+  .view-btns{display:flex; justify-content:flex-end; padding-top:10px;}
+  .view-btns a{border:1px solid #3b4890; background:#3b4890; color:#fff; font-weight:bold; padding:5px 16px; border-radius:2px; font-size:12px;}
+
   .footer{margin-top:24px; padding-top:12px; border-top:1px solid #ddd; color:#999; font-size:11px; text-align:center; line-height:1.7;}
 
   @media (max-width:640px){
-    table{table-layout:auto;}
-    th.col-writer,th.col-end,th.col-start,td.c-writer,td.c-end,td.c-start{display:none;}
-    td.title{white-space:normal; line-height:1.4;}
+    .list{table-layout:auto;}
+    th.col-writer,th.col-head,th.col-time,td.c-writer,td.c-head,td.c-time{display:none;}
+    .list td.title{white-space:normal; line-height:1.4;}
     .info-box{grid-template-columns:repeat(2,1fr);}
     .info-box div:nth-child(2){border-right:none;}
     .info-box div:nth-child(-n+2){border-bottom:1px solid #e1e1e1;}
-    td,th{font-size:12px;}
+    .list td,.list th{font-size:12px;}
+    .detail th{width:90px;}
   }
 </style>
 </head>
 <body>
-  <div class="topbar"><div class="inner"><div class="logo">gbsw<span>inside</span></div></div></div>
+  <div class="topbar"><div class="inner"><a class="logo" href="#">gbsw<span>inside</span></a></div></div>
+  <div class="gnb"><div class="inner"><span class="on">갤러리</span><span>마이너갤</span><span>미니갤</span><span>인물갤</span><span>갤로그</span><span>디시트렌드</span></div></div>
 
   <div class="wrap">
     <div class="gall-head">
-      <div class="gall-title">와이파이 끊김 갤러리<small>gbsw314</small></div>
+      <div class="gall-title">와이파이 끊김 갤러리</div>
     </div>
-    <div class="gall-sub" id="gateway-line">게이트웨이 확인 중…</div>
+
+    <div class="view" id="view" hidden></div>
 
     <div class="tab-row">
-      <div class="tabs"><div class="on">전체글</div><div>개념글</div><div>공지</div></div>
+      <div class="tabs">
+        <button type="button" id="tab-all" class="on">전체글</button>
+        <button type="button" id="tab-best">개념글</button>
+      </div>
       <div class="sort">
         <button type="button" id="sort-pop" class="on">인기순</button>
         <button type="button" id="sort-date">날짜순 <span class="arrow" id="date-arrow">▼</span></button>
@@ -544,32 +601,42 @@ HTML_PAGE = """<!doctype html>
       <div><span class="k">평균 끊김</span><span class="v" id="c-avg">-</span></div>
     </div>
 
-    <table>
+    <table class="list">
       <thead>
-        <tr><th class="col-no">순위</th><th>제목</th><th class="col-writer">글쓴이</th><th class="col-start">시작</th><th class="col-end">종료</th><th class="col-dur">지속</th></tr>
+        <tr><th class="col-no">번호</th><th class="col-head">말머리</th><th>제목</th><th class="col-writer">글쓴이</th><th class="col-date">날짜</th><th class="col-time">시작</th><th class="col-time">종료</th><th class="col-dur">지속</th></tr>
       </thead>
       <tbody>
         <tr class="notice" id="notice-row">
           <td><span class="tag" id="tag">공지</span></td>
-          <td class="title" colspan="5"><span id="status-text">확인 중…</span><span class="sub-detail" id="status-detail"></span></td>
+          <td class="title" colspan="7"><span id="status-text">확인 중…</span><span class="sub-detail" id="status-detail"></span></td>
         </tr>
       </tbody>
       <tbody id="ranking-body">
-        <tr><td colspan="6" class="empty">기록 불러오는 중…</td></tr>
+        <tr><td colspan="8" class="empty">기록 불러오는 중…</td></tr>
       </tbody>
     </table>
+    <div class="paging" id="paging"></div>
 
     <div class="footer">
-      이 갤러리는 기숙사 와이파이 끊김을 자동으로 기록합니다. 순위는 오래 끊긴 순입니다.<br>
+      이 갤러리는 기숙사 와이파이 끊김을 자동으로 기록합니다. 인기순은 오래 끊긴 순입니다.<br>
       Copyright © gbswinside. All rights reserved.
     </div>
   </div>
 
 <script>
+const PER_PAGE = 30;
+const WEEK = "일월화수목금토";
 let outageStart = null;
-let records = [];
-let sortMode = "pop";     // "pop" = 인기순(오래 끊긴 순), "date" = 날짜순
-let dateDesc = true;      // 날짜순일 때 true = 최신순 ▼, false = 오래된순 ▲
+let status = null;
+let stats = null;
+let records = [];        // 서버가 준 순서 (오래 끊긴 순, rank 포함)
+let byNo = [];           // 오래된 순. 글번호 = 인덱스+1
+let sortMode = "pop";    // "pop" = 인기순(오래 끊긴 순), "date" = 날짜순
+let dateDesc = true;     // 날짜순일 때 true = 최신순 ▼, false = 오래된순 ▲
+let tab = "all";         // "all" = 전체글, "best" = 개념글(1~3위)
+let page = 1;
+
+const p2 = n => String(n).padStart(2,"0");
 
 function fmtDuration(totalSec){
   totalSec = Math.max(0, Math.floor(totalSec));
@@ -583,28 +650,34 @@ function fmtDuration(totalSec){
   return parts.join(" ");
 }
 
-function fmtDate(iso){
-  const d = new Date(iso);
-  const p = n => String(n).padStart(2,"0");
-  return (d.getMonth()+1) + "." + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+function sameDay(a, b){
+  return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+}
+function hms(d){ return p2(d.getHours())+":"+p2(d.getMinutes())+":"+p2(d.getSeconds()); }
+function ymd(d){ return d.getFullYear()+"."+p2(d.getMonth()+1)+"."+p2(d.getDate()); }
+function fullDate(d){ return ymd(d)+" "+hms(d); }
+function monthDay(d){ return (d.getMonth()+1)+"월 "+d.getDate()+"일"; }
+function headTag(sec){ return sec < 60 ? "찔끔" : sec < 600 ? "터짐" : sec < 3600 ? "대형" : "초대형"; }
+function postTitle(r){ return monthDay(r.s) + " 와이파이 터짐"; }
+function curNo(){
+  const m = location.hash.match(/no=([0-9]+)/);
+  return m ? Number(m[1]) : null;
+}
+
+function getVote(r){ try{ return localStorage.getItem("vote:"+r.start); }catch(e){ return null; } }
+function setVote(r, v){
+  try{
+    if(getVote(r) === v) localStorage.removeItem("vote:"+r.start);
+    else localStorage.setItem("vote:"+r.start, v);
+  }catch(e){}
+  renderView();
 }
 
 async function refreshStatus(){
   try{
     const res = await fetch("/api/status");
     const d = await res.json();
-    let line = "감시 대상: " + (d.gateway || "-");
-    if(d.target_ssid){
-      if(d.ssid_check_ok){
-        line += " · 지정 와이파이: " + d.target_ssid + " (현재: " + (d.current_ssid || "미접속") + ")";
-      } else {
-        line += " · SSID 확인 불가 — 게이트웨이 응답으로 판단";
-      }
-    }
-    if(d.last_checked) line += " · 마지막 확인 " + new Date(d.last_checked).toLocaleTimeString("ko-KR");
-    if(d.quiet_hours_enabled) line += " · 미감시 " + d.quiet_hours_range;
-    document.getElementById("gateway-line").textContent = line;
-
+    status = d;
     const row = document.getElementById("notice-row");
     const tag = document.getElementById("tag");
     const st = document.getElementById("status-text");
@@ -619,7 +692,7 @@ async function refreshStatus(){
       detail.textContent = ""; outageStart = null;
     } else {
       row.className = "notice"; tag.className = "tag"; tag.textContent = "속보";
-      st.textContent = "[속보] 와이파이 지금 끊김";
+      st.textContent = "[속보] " + monthDay(new Date()) + " 와이파이 지금 터짐";
       outageStart = d.current_outage_start ? new Date(d.current_outage_start) : null;
     }
   }catch(e){
@@ -638,63 +711,162 @@ async function refreshHistory(){
   try{
     const res = await fetch("/api/history");
     const d = await res.json();
-    document.getElementById("c-count").textContent = d.stats.total_outages + "회";
-    document.getElementById("c-total").textContent = d.stats.total_downtime_human;
-    document.getElementById("c-longest").textContent = d.stats.longest_human;
-    document.getElementById("c-avg").textContent = d.stats.avg_human;
+    stats = d.stats;
+    document.getElementById("c-count").textContent = stats.total_outages + "회";
+    document.getElementById("c-total").textContent = stats.total_downtime_human;
+    document.getElementById("c-longest").textContent = stats.longest_human;
+    document.getElementById("c-avg").textContent = stats.avg_human;
 
-    records = d.ranking;
-    renderList();
+    records = d.ranking.map(r => ({...r, s: new Date(r.start), e: new Date(r.end)}));
+    byNo = records.slice().sort((a, b) => a.s - b.s);
+    byNo.forEach((r, i) => r.no = i + 1);
+    document.getElementById("tab-all").innerHTML = '전체글<span class="cnt">' + records.length + '</span>';
+    renderList(); renderView();
   }catch(e){}
 }
 
 function renderList(){
   const body = document.getElementById("ranking-body");
-  if(records.length === 0){
-    body.innerHTML = '<tr><td colspan="6" class="empty">등록된 게시물이 없습니다.</td></tr>';
+  const pager = document.getElementById("paging");
+  let list = tab === "best" ? records.filter(r => r.rank <= 3) : records.slice();
+  if(list.length === 0){
+    body.innerHTML = '<tr><td colspan="8" class="empty">등록된 게시물이 없습니다.</td></tr>';
+    pager.innerHTML = "";
     return;
   }
-  const list = records.slice();
-  if(sortMode === "date"){
-    list.sort((a, b) => {
-      const diff = new Date(a.start) - new Date(b.start);
-      return dateDesc ? -diff : diff;
-    });
-  } else {
-    list.sort((a, b) => a.rank - b.rank);
-  }
-  body.innerHTML = list.map(r => {
-    const cls = r.rank<=3 ? "r"+r.rank : "";
-    const best = r.rank<=3 ? '<span class="best">개념</span>' : "";
-    const mins = Math.floor(r.duration_sec/60);
+  if(sortMode === "date") list.sort((a, b) => dateDesc ? b.s - a.s : a.s - b.s);
+  else list.sort((a, b) => a.rank - b.rank);
+
+  const pages = Math.ceil(list.length / PER_PAGE);
+  page = Math.min(page, pages);
+  const cur = curNo();
+  body.innerHTML = list.slice((page-1)*PER_PAGE, page*PER_PAGE).map(r => {
+    const top = r.rank <= 3;
+    const cls = (top ? "r"+r.rank : "") + (r.no === cur ? " cur" : "");
+    const head = headTag(r.duration_sec);
     return `<tr class="${cls}">
-      <td>${r.rank}</td>
-      <td class="title">${best}와이파이 ${r.duration_human} 동안 끊김<span class="cmt">[${mins}]</span></td>
-      <td class="c-writer"><span class="writer">ㅇㅇ</span> <span class="ip">(172.28)</span></td>
-      <td class="c-start">${fmtDate(r.start)}</td>
-      <td class="c-end">${fmtDate(r.end)}</td>
+      <td class="c-no">${r.no}</td>
+      <td class="c-head${r.duration_sec >= 600 ? " big" : ""}">${head}</td>
+      <td class="title"><a href="#no=${r.no}"><span class="ico${top ? " best" : ""}"></span>${top ? '<span class="best">개념</span>' : ""}${postTitle(r)}</a><span class="cmt">[${Math.floor(r.duration_sec/60)}]</span></td>
+      <td class="c-writer"><span class="writer">ㅇㅇ</span><span class="ip">(172.28)</span></td>
+      <td>${ymd(r.s)}</td>
+      <td class="c-time">${hms(r.s)}</td>
+      <td class="c-time">${sameDay(r.s, r.e) ? hms(r.e) : fullDate(r.e)}</td>
       <td>${r.duration_human}</td>
     </tr>`;
   }).join("");
+
+  let html = "";
+  for(let i = 1; i <= pages; i++) html += `<button type="button" data-p="${i}" class="${i === page ? "on" : ""}">${i}</button>`;
+  pager.innerHTML = pages > 1 ? html : "";
 }
 
-function updateSortButtons(){
+function renderView(){
+  const box = document.getElementById("view");
+  const r = byNo[curNo() - 1];
+  if(!r || !stats){
+    box.hidden = true;
+    document.title = "와이파이 끊김 갤러리";
+    return;
+  }
+  box.hidden = false;
+  document.title = postTitle(r) + " - 와이파이 끊김 갤러리";
+
+  const day = byNo.filter(x => sameDay(x.s, r.s));
+  const nth = day.indexOf(r) + 1;
+  const dayTotal = day.reduce((sum, x) => sum + x.duration_sec, 0);
+  const prev = byNo[r.no - 2], next = byNo[r.no];
+  const isToday = sameDay(r.s, new Date());
+  const ratio = stats.avg_sec ? (r.duration_sec / stats.avg_sec).toFixed(1) : "-";
+  const topPct = Math.max(1, Math.ceil(r.rank / records.length * 100));
+  const vote = getVote(r);
+  const up = Math.floor(r.duration_sec / 60) + (vote === "up" ? 1 : 0);
+  const down = vote === "down" ? 1 : 0;
+
+  const midnight = new Date(r.s.getFullYear(), r.s.getMonth(), r.s.getDate()).getTime();
+  const pos = t => Math.min(100, Math.max(0, (t - midnight) / 864000));
+  let quiet = "";
+  if(status && status.quiet_hours_enabled){
+    const [a, b] = status.quiet_hours_range.split("~").map(x => { const [h, m] = x.split(":"); return (h*60 + Number(m)) / 14.4; });
+    quiet = a < b ? `<div class="q" style="left:${a}%;width:${b-a}%"></div>`
+                  : `<div class="q" style="left:0;width:${b}%"></div><div class="q" style="left:${a}%;width:${100-a}%"></div>`;
+  }
+  const segs = day.map(x => {
+    const L = pos(x.s.getTime()), W = pos(x.e.getTime()) - L;
+    return `<a href="#no=${x.no}" class="${x === r ? "me" : ""}" style="left:${L}%;width:${W}%" title="${hms(x.s)} ~ ${hms(x.e)} (${x.duration_human})"></a>`;
+  }).join("");
+
+  box.innerHTML = `
+    <div class="view-head">
+      <h3 class="view-title"><span class="h">[${headTag(r.duration_sec)}]</span>${postTitle(r)}</h3>
+      <div class="view-meta">
+        <div><span class="writer">ㅇㅇ</span><span class="ip">(172.28)</span><span class="bar">|</span>${fullDate(r.s)}</div>
+        <div>인기 ${r.rank}위<span class="bar">|</span>추천 ${up}<span class="bar">|</span>번호 ${r.no}</div>
+      </div>
+    </div>
+    <div class="view-body">
+      <p>${monthDay(r.s)} (${WEEK[r.s.getDay()]}) 와이파이 터짐</p>
+      <p><b>${hms(r.s)}</b>부터 <b>${hms(r.e)}</b>까지 <b class="red">${r.duration_human}</b> 동안 인터넷 안 됐음</p>
+      <p>${isToday ? "오늘만" : "이날만"} ${nth}번째 터진 거임${day.length > 1 ? ` (${isToday ? "오늘" : "이날"} 총 ${day.length}번)` : ""}</p>
+
+      <table class="detail">
+        <tr><th>날짜</th><td>${r.s.getFullYear()}년 ${monthDay(r.s)} (${WEEK[r.s.getDay()]})</td></tr>
+        <tr><th>터진 시각</th><td>${hms(r.s)}</td></tr>
+        <tr><th>복구 시각</th><td>${sameDay(r.s, r.e) ? hms(r.e) : fullDate(r.e)}</td></tr>
+        <tr><th>지속 시간</th><td><b>${r.duration_human}</b></td></tr>
+        <tr><th>인기 순위</th><td>${r.rank}위 / 전체 ${records.length}건 <span class="gray">(상위 ${topPct}%)</span></td></tr>
+        <tr><th>평균 대비</th><td>평균(${stats.avg_human})의 ${ratio}배</td></tr>
+        <tr><th>${isToday ? "오늘" : "이날"} 끊김</th><td>${day.length}회, 합계 ${fmtDuration(dayTotal)}</td></tr>
+        <tr><th>직전 끊김</th><td>${prev ? `복구되고 ${fmtDuration((r.s - prev.e) / 1000)} 만에 또 터짐 <span class="gray">(${fullDate(prev.e)} 복구)</span>` : "첫 기록"}</td></tr>
+      </table>
+
+      <div class="tl-wrap">
+        <div class="tl-label">${monthDay(r.s)} 와이파이 상황 <span class="gray">(빨강 = 끊김, 빗금 = 미감시)</span></div>
+        <div class="tl">${quiet}${segs}</div>
+        <div class="tl-scale"><span>0시</span><span>6시</span><span>12시</span><span>18시</span><span>24시</span></div>
+      </div>
+    </div>
+    <div class="recom">
+      <button type="button" class="up${vote === "up" ? " on" : ""}" id="vote-up"><span class="n">${up}</span>개념 추천</button>
+      <button type="button" class="down${vote === "down" ? " on" : ""}" id="vote-down"><span class="n">${down}</span>비추</button>
+    </div>
+    <div class="view-nav">
+      ${next ? `<a href="#no=${next.no}"><span class="k">다음글</span>${postTitle(next)} (${next.duration_human})</a>` : ""}
+      ${prev ? `<a href="#no=${prev.no}"><span class="k">이전글</span>${postTitle(prev)} (${prev.duration_human})</a>` : ""}
+    </div>
+    <div class="view-btns"><a href="#">목록</a></div>`;
+  document.getElementById("vote-up").onclick = () => setVote(r, "up");
+  document.getElementById("vote-down").onclick = () => setVote(r, "down");
+}
+
+function updateButtons(){
   document.getElementById("sort-pop").className = sortMode === "pop" ? "on" : "";
   document.getElementById("sort-date").className = sortMode === "date" ? "on" : "";
   document.getElementById("date-arrow").textContent = dateDesc ? "▼" : "▲";
   document.getElementById("sort-date").title = dateDesc ? "최신순 (누르면 오래된순)" : "오래된순 (누르면 최신순)";
+  document.getElementById("tab-all").classList.toggle("on", tab === "all");
+  document.getElementById("tab-best").classList.toggle("on", tab === "best");
 }
 
-document.getElementById("sort-pop").onclick = () => {
-  sortMode = "pop";
-  updateSortButtons(); renderList();
-};
+function relist(){ page = 1; updateButtons(); renderList(); }
+document.getElementById("sort-pop").onclick = () => { sortMode = "pop"; relist(); };
 document.getElementById("sort-date").onclick = () => {
   if(sortMode === "date") dateDesc = !dateDesc;  // 이미 날짜순이면 화살표 방향 전환
   else sortMode = "date";
-  updateSortButtons(); renderList();
+  relist();
 };
-updateSortButtons();
+document.getElementById("tab-all").onclick = () => { tab = "all"; relist(); };
+document.getElementById("tab-best").onclick = () => { tab = "best"; relist(); };
+document.getElementById("paging").onclick = e => {
+  const p = e.target.dataset.p;
+  if(p){ page = Number(p); renderList(); }
+};
+window.onhashchange = () => {
+  renderView(); renderList();
+  const box = document.getElementById("view");
+  if(box.hidden) window.scrollTo(0, 0); else box.scrollIntoView();
+};
+updateButtons();
 
 refreshStatus(); refreshHistory();
 setInterval(refreshStatus, 2000);
