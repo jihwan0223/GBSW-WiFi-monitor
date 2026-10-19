@@ -25,6 +25,7 @@ CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 PING_INTERVAL_SEC = 3
 PING_TIMEOUT_MS = 1000
 FAILS_TO_MARK_DISCONNECTED = 2  # 연속 실패 횟수 (순간 지연으로 인한 오탐 방지)
+MERGE_GAP_SEC = 60  # 복구 후 이 시간 안에 다시 끊기면 한 번의 끊김으로 합침
 HTTP_PORT = 8765
 
 # 학교/기관 네트워크는 보안상 게이트웨이로 가는 ICMP(ping)를 막아두는 경우가 많다.
@@ -161,13 +162,36 @@ def load_config():
     return cfg
 
 
+def gap_sec(earlier_iso, later_iso):
+    return (datetime.fromisoformat(later_iso) - datetime.fromisoformat(earlier_iso)).total_seconds()
+
+
+def merge_short_gaps(records):
+    merged = []
+    for r in sorted(records, key=lambda r: datetime.fromisoformat(r["start"])):
+        if merged and gap_sec(merged[-1]["end"], r["start"]) < MERGE_GAP_SEC:
+            last = merged[-1]
+            if gap_sec(last["end"], r["end"]) > 0:
+                last["end"] = r["end"]
+            last["duration_sec"] = max(0, int(gap_sec(last["start"], last["end"])))
+        else:
+            merged.append(dict(r))
+    return merged
+
+
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
         except Exception:
-            pass
+            data = None
+        if data is not None:
+            try:
+                data["records"] = merge_short_gaps(data.get("records", []))
+            except Exception:
+                pass
+            return data
     return {"records": [], "ongoing": None}
 
 
@@ -367,6 +391,9 @@ def monitor_loop():
                 consecutive_fails += 1
                 if STATE["connected"] and consecutive_fails >= FAILS_TO_MARK_DISCONNECTED:
                     start = now_iso()
+                    records = data["records"]
+                    if records and gap_sec(records[-1]["end"], start) < MERGE_GAP_SEC:
+                        start = records.pop()["start"]
                     data["ongoing"] = {"start": start}
                     save_data(data)
                     STATE["connected"] = False
