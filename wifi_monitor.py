@@ -471,7 +471,7 @@ HTML_PAGE = """<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>와이파이 끊김 갤러리</title>
+<title>경소마고 와이파이 갤러리</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   *{box-sizing:border-box;}
@@ -606,7 +606,7 @@ HTML_PAGE = """<!doctype html>
 
   <div class="wrap">
     <div class="gall-head">
-      <div class="gall-title">와이파이 끊김 갤러리</div>
+      <div class="gall-title">경소마고 와이파이 갤러리</div>
     </div>
 
     <div class="view" id="view" hidden></div>
@@ -793,11 +793,11 @@ function renderView(){
   const r = byNo[curNo() - 1];
   if(!r || !stats){
     box.hidden = true;
-    document.title = "와이파이 끊김 갤러리";
+    document.title = "경소마고 와이파이 갤러리";
     return;
   }
   box.hidden = false;
-  document.title = postTitle(r) + " - 와이파이 끊김 갤러리";
+  document.title = postTitle(r) + " - 경소마고 와이파이 갤러리";
 
   const day = byNo.filter(x => sameDay(x.s, r.s));
   const nth = day.indexOf(r) + 1;
