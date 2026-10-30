@@ -21,6 +21,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "wifi_outages.json")
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+OPINION_FILE = os.path.join(BASE_DIR, "opinions.json")  # 의견갤 글 저장 파일
+VOTE_FILE = os.path.join(BASE_DIR, "votes.json")  # 개념/비추 수 저장 파일
+
+OPINION_TITLE_MAX = 40  # 의견 제목 최대 글자 수
+OPINION_BODY_MAX = 2000  # 의견 내용 최대 글자 수
+POST_COOLDOWN_SEC = 30  # 같은 IP가 의견을 다시 쓰려면 기다려야 하는 시간
+MAX_REQUEST_BYTES = 16 * 1024  # POST 요청 본문 최대 크기
 
 PING_INTERVAL_SEC = 3
 PING_TIMEOUT_MS = 1000
@@ -201,6 +208,28 @@ def save_data(data):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp, DATA_FILE)
+
+
+def load_json(path, default):
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return default
+
+
+def save_json(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+
+
+OPINIONS = load_json(OPINION_FILE, {"posts": []})  # 의견갤 글 목록 {"posts": [{id, title, body, time}]}
+VOTES = load_json(VOTE_FILE, {})  # 글별 개념/비추 수 {"w:<끊김 시작시각>" 또는 "o:<의견 id>": {"up": n, "down": n}}
+LAST_POST_AT = {}  # IP별 마지막 의견 작성 시각 (도배 방지)
 
 
 STATE = {
@@ -466,6 +495,42 @@ def build_history_payload():
     }
 
 
+def add_opinion(title, body, ip):
+    title = (title or "").strip()[:OPINION_TITLE_MAX]
+    body = (body or "").strip()[:OPINION_BODY_MAX]
+    if not title or not body:
+        return {"ok": False, "error": "제목과 내용을 모두 입력해주세요."}
+    now = time.time()
+    with _lock:
+        wait = POST_COOLDOWN_SEC - (now - LAST_POST_AT.get(ip, 0))
+        if wait > 0:
+            return {"ok": False, "error": f"{int(wait) + 1}초 후에 다시 작성할 수 있습니다."}
+        LAST_POST_AT[ip] = now
+        posts = OPINIONS["posts"]
+        new_id = max((p["id"] for p in posts), default=0) + 1
+        posts.append({"id": new_id, "title": title, "body": body, "time": now_iso()})
+        save_json(OPINION_FILE, OPINIONS)
+    return {"ok": True, "id": new_id}
+
+
+def add_vote(key, kind):
+    if kind not in ("up", "down") or not isinstance(key, str):
+        return {"ok": False}
+    with _lock:
+        if key.startswith("w:"):
+            valid = any(r["start"] == key[2:] for r in STATE["data"]["records"])
+        elif key.startswith("o:"):
+            valid = any(str(p["id"]) == key[2:] for p in OPINIONS["posts"])
+        else:
+            valid = False
+        if not valid:
+            return {"ok": False}
+        counts = VOTES.setdefault(key, {"up": 0, "down": 0})
+        counts[kind] += 1
+        save_json(VOTE_FILE, VOTES)
+        return {"ok": True, "up": counts["up"], "down": counts["down"]}
+
+
 # 외부 리소스 없이 완전히 로컬에서 동작 (와이파이가 끊겨도 열림)
 HTML_PAGE = """<!doctype html>
 <html lang="ko">
@@ -487,8 +552,10 @@ HTML_PAGE = """<!doctype html>
   .logo span{color:#ffd400;}
   .gnb{background:#29367c; border-bottom:1px solid #1f2a63;}
   .gnb .inner{max-width:980px; margin:0 auto; padding:0 12px; display:flex; gap:18px; height:32px; align-items:center; overflow:hidden; white-space:nowrap;}
-  .gnb span{color:#c9cfee; font-size:12px;}
-  .gnb span.on{color:#fff; font-weight:bold;}
+  .gnb a{color:#c9cfee; font-size:12px;}
+  .gnb a:hover{color:#fff;}
+  .gnb a.on{color:#fff; font-weight:bold;}
+  .gnb span{color:#7d87bd; font-size:12px; cursor:default;}
   .wrap{max-width:980px; margin:0 auto; padding:16px 12px 40px;}
 
   .gall-head{border-bottom:2px solid #3b4890; padding-bottom:8px; margin-bottom:12px; display:flex; align-items:flex-end; justify-content:space-between; gap:8px; flex-wrap:wrap;}
@@ -554,7 +621,7 @@ HTML_PAGE = """<!doctype html>
   .paging button:hover{text-decoration:underline;}
   .paging button.on{color:#d31900; font-weight:bold; border-color:#ccc;}
 
-  .view{border-top:2px solid #3b4890; margin-bottom:24px;}
+  .view{margin-bottom:24px;}
   .view-head{padding:12px 10px 10px; border-bottom:1px solid #ddd;}
   .view-title{font-size:17px; font-weight:bold; color:#333; margin:0 0 8px; letter-spacing:-0.5px; word-break:keep-all;}
   .view-title .h{color:#3b4890; margin-right:4px;}
@@ -567,23 +634,35 @@ HTML_PAGE = """<!doctype html>
   .detail th{width:110px; text-align:left; font-weight:normal; color:#666; background:#f8f8f8; padding:7px 10px; border-bottom:1px solid #e5e5e5;}
   .detail td{padding:7px 10px; border-bottom:1px solid #e5e5e5; color:#333;}
   .detail .gray{color:#999; font-size:12px;}
-  .tl-wrap{max-width:520px; margin:18px 0 10px;}
-  .tl-label{font-size:12px; color:#666; margin-bottom:4px;}
-  .tl{position:relative; height:22px; background:#eef0f6; border:1px solid #d5d9e8;}
-  .tl .q{position:absolute; top:0; bottom:0; background:repeating-linear-gradient(45deg,#d8dcea 0 3px,#eef0f6 3px 7px);}
-  .tl a{position:absolute; top:0; bottom:0; min-width:3px; background:#f2a493;}
-  .tl a.me{background:#d31900; z-index:1;}
-  .tl-scale{display:flex; justify-content:space-between; font-size:11px; color:#999; margin-top:3px;}
-  .recom{display:flex; justify-content:center; gap:10px; padding:22px 0; border-bottom:1px solid #eee;}
-  .recom button{width:100px; border:1px solid #ccc; background:#fff; border-radius:4px; padding:8px 0 7px; cursor:pointer; color:#555; font-size:12px;}
-  .recom button .n{display:block; font-size:19px; font-weight:bold; color:#d31900; margin-bottom:2px;}
-  .recom button.down .n{color:#666;}
-  .recom button.on{border-color:#d31900; background:#fff5f3;}
-  .recom button.down.on{border-color:#666; background:#f3f3f3;}
+  .view-body .text{white-space:pre-wrap; word-break:break-all; margin:0;}
+  .recom{display:flex; justify-content:center; align-items:center; gap:12px; padding:22px 0; border-bottom:1px solid #eee;}
+  .recom .n{min-width:40px; font-size:20px; font-weight:bold; color:#3b4890;}
+  .recom .n.up{text-align:right;}
+  .recom .n.down{color:#888;}
+  .recom button{padding:0; border:none; background:none; cursor:pointer; line-height:0; border-radius:50%; transition:transform .1s;}
+  .recom button:hover{transform:scale(1.06);}
+  .recom button:active{transform:scale(.94);}
+  .recom button.on{box-shadow:0 0 0 3px #ffd400;}
+  .recom button.down.on{box-shadow:0 0 0 3px #666;}
+
+  .view-btns a.sub{background:#fff; color:#3b4890;}
+  .write-btn{border:1px solid #3b4890; background:#3b4890; color:#fff !important; font-weight:bold; padding:4px 14px; border-radius:2px; font-size:12px; margin-bottom:5px;}
+  .col-vote{width:60px;}
+  .write{margin-bottom:24px;}
+  .write-head{font-size:15px; font-weight:bold; color:#333; padding:10px 0; border-bottom:1px solid #ddd;}
+  .write input, .write textarea{display:block; width:100%; border:1px solid #ccc; padding:9px 10px; font:inherit; font-size:14px; margin-top:10px; border-radius:2px;}
+  .write textarea{height:260px; resize:vertical; line-height:1.6;}
+  .write input:focus, .write textarea:focus{outline:none; border-color:#3b4890;}
+  .write-foot{display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:8px;}
+  .write-msg{color:#d31900; font-size:12px;}
+  .write-foot .btns{display:flex; gap:4px;}
+  .write-foot a, .write-foot button{border:1px solid #3b4890; background:#3b4890; color:#fff; font-weight:bold; padding:6px 18px; border-radius:2px; font-size:12px; cursor:pointer;}
+  .write-foot a{background:#fff; color:#3b4890;}
+  .write-foot button:disabled{opacity:.5; cursor:default;}
   .view-nav a{display:flex; gap:12px; padding:8px 10px; border-bottom:1px solid #eee; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;}
   .view-nav a:hover{background:#f5f7fb;}
   .view-nav .k{color:#999; flex:none; width:50px;}
-  .view-btns{display:flex; justify-content:flex-end; padding-top:10px;}
+  .view-btns{display:flex; justify-content:flex-end; gap:4px; padding-top:10px;}
   .view-btns a{border:1px solid #3b4890; background:#3b4890; color:#fff; font-weight:bold; padding:5px 16px; border-radius:2px; font-size:12px;}
 
   .footer{margin-top:24px; padding-top:12px; border-top:1px solid #ddd; color:#999; font-size:11px; text-align:center; line-height:1.7;}
@@ -601,16 +680,45 @@ HTML_PAGE = """<!doctype html>
 </style>
 </head>
 <body>
-  <div class="topbar"><div class="inner"><a class="logo" href="#">gbsw<span>inside</span></a></div></div>
-  <div class="gnb"><div class="inner"><span class="on">갤러리</span><span>마이너갤</span><span>미니갤</span><span>인물갤</span><span>갤로그</span><span>디시트렌드</span></div></div>
+  <div class="topbar"><div class="inner"><a class="logo" href="#">gb<span>inside</span></a></div></div>
+  <div class="gnb"><div class="inner">
+    <a href="#" id="nav-wifi">갤러리</a><span>마이너갤</span><span>의견</span><span>인물</span><span>이벤트</span><a href="#op" id="nav-op">광고문의</a>
+  </div></div>
 
   <div class="wrap">
     <div class="gall-head">
-      <div class="gall-title">경소마고 와이파이 갤러리</div>
+      <div class="gall-title" id="gall-title">경소마고 와이파이 갤러리</div>
     </div>
 
     <div class="view" id="view" hidden></div>
 
+    <div class="write" id="write" hidden>
+      <div class="write-head">의견 글쓰기</div>
+      <input id="w-title" maxlength="40" placeholder="제목을 입력해 주세요.">
+      <textarea id="w-body" maxlength="2000" placeholder="의견을 자유롭게 남겨주세요."></textarea>
+      <div class="write-foot">
+        <span class="write-msg" id="w-msg"></span>
+        <div class="btns"><a href="#op">취소</a><button type="button" id="w-submit">등록</button></div>
+      </div>
+    </div>
+
+    <div id="op-sec" hidden>
+      <div class="tab-row">
+        <div class="tabs"><button type="button" class="on" id="op-tab">전체글</button></div>
+        <a class="write-btn" href="#write">글쓰기</a>
+      </div>
+      <table class="list">
+        <thead>
+          <tr><th class="col-no">번호</th><th class="col-head">말머리</th><th>제목</th><th class="col-writer">글쓴이</th><th class="col-date">날짜</th><th class="col-vote">개념</th></tr>
+        </thead>
+        <tbody id="op-body">
+          <tr><td colspan="6" class="empty">불러오는 중…</td></tr>
+        </tbody>
+      </table>
+      <div class="paging" id="op-paging"></div>
+    </div>
+
+    <div id="wifi-sec">
     <div class="tab-row">
       <div class="tabs">
         <button type="button" id="tab-all" class="on">전체글</button>
@@ -643,27 +751,36 @@ HTML_PAGE = """<!doctype html>
       </tbody>
     </table>
     <div class="paging" id="paging"></div>
+    </div>
 
     <div class="footer">
-      이 갤러리는 기숙사 와이파이 끊김을 자동으로 기록합니다. 인기순은 오래 끊긴 순입니다.<br>
-      Copyright © gbswinside. All rights reserved.
+      <span id="foot-desc">이 갤러리는 기숙사 와이파이 끊김을 자동으로 기록합니다. 인기순은 오래 끊긴 순입니다.</span><br>
+      Copyright © gbinside. All rights reserved.
     </div>
   </div>
 
 <script>
 const PER_PAGE = 30;
 const WEEK = "일월화수목금토";
-let outageStart = null;
-let status = null;
-let stats = null;
+const WIFI_TITLE = "경소마고 와이파이 갤러리";  // 와이파이 갤러리 이름
+const OP_TITLE = "의견 갤러리";                // 의견갤 이름
+// 개념/비추 버튼 아이콘
+const ICON_UP = '<svg viewBox="0 0 100 100" width="56" height="56" aria-hidden="true"><circle cx="50" cy="50" r="50" fill="#3d4a92"/><polygon points="50.0,15.0 56.5,31.1 73.8,32.3 60.5,43.4 64.7,60.2 50.0,51.0 35.3,60.2 39.5,43.4 26.2,32.3 43.5,31.1" fill="#ffcc00" stroke="#ffcc00" stroke-width="6" stroke-linejoin="round"/><text x="50" y="87" text-anchor="middle" font-size="21" font-weight="bold" fill="#fff">개념</text></svg>';
+const ICON_DOWN = '<svg viewBox="0 0 100 100" width="56" height="56" aria-hidden="true"><circle cx="50" cy="50" r="50" fill="#a6a6a6"/><polygon points="42,16 58,16 58,38 71,38 50,63 29,38 42,38" fill="#fff" stroke="#fff" stroke-width="5" stroke-linejoin="round"/><text x="50" y="87" text-anchor="middle" font-size="21" font-weight="bold" fill="#fff">비추</text></svg>';
+let outageStart = null;  // 진행 중인 끊김의 시작 시각 (경과 시간 표시용)
+let stats = null;        // 서버가 준 끊김 통계
 let records = [];        // 서버가 준 순서 (오래 끊긴 순, rank 포함)
 let byNo = [];           // 오래된 순. 글번호 = 인덱스+1
+let opinions = [];       // 의견갤 글 (오래된 순)
+let votes = {};          // 글별 개념/비추 수 {"w:시작시각" 또는 "o:의견번호": {up, down}}
 let sortMode = "pop";    // "pop" = 인기순(오래 끊긴 순), "date" = 날짜순
 let dateDesc = true;     // 날짜순일 때 true = 최신순 ▼, false = 오래된순 ▲
 let tab = "all";         // "all" = 전체글, "best" = 개념글(1~3위)
-let page = 1;
+let page = 1;            // 와이파이 목록 현재 페이지
+let opPage = 1;          // 의견갤 목록 현재 페이지
 
 const p2 = n => String(n).padStart(2,"0");
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 function fmtDuration(totalSec){
   totalSec = Math.max(0, Math.floor(totalSec));
@@ -686,25 +803,50 @@ function fullDate(d){ return ymd(d)+" "+hms(d); }
 function monthDay(d){ return (d.getMonth()+1)+"월 "+d.getDate()+"일"; }
 function headTag(sec){ return sec < 60 ? "찔끔" : sec < 600 ? "터짐" : sec < 3600 ? "대형" : "초대형"; }
 function postTitle(r){ return monthDay(r.s) + " 와이파이 터짐"; }
-function curNo(){
-  const m = location.hash.match(/no=([0-9]+)/);
-  return m ? Number(m[1]) : null;
+
+// 주소 # 뒤: "" = 와이파이 목록, no=N = 와이파이 글, op = 의견갤 목록, op=N = 의견 글, write = 의견 글쓰기
+function route(){
+  const h = location.hash;
+  let m;
+  if(h === "#write") return {gall: "op", write: true};
+  if(h === "#op") return {gall: "op"};
+  if((m = h.match(/^#op=([0-9]+)$/))) return {gall: "op", id: Number(m[1])};
+  if((m = h.match(/^#no=([0-9]+)$/))) return {gall: "wifi", no: Number(m[1])};
+  return {gall: "wifi"};
 }
 
-function getVote(r){ try{ return localStorage.getItem("vote:"+r.start); }catch(e){ return null; } }
-function setVote(r, v){
+const wifiKey = r => "w:" + r.start;
+const opKey = p => "o:" + p.id;
+function counts(key){ return votes[key] || {up: 0, down: 0}; }
+function myVote(key){ try{ return localStorage.getItem("voted:" + key); }catch(e){ return null; } }
+
+async function vote(key, kind){
+  const mine = myVote(key);
+  if(mine){ alert("이미 " + (mine === "up" ? "개념" : "비추") + " 누른 글입니다."); return; }
   try{
-    if(getVote(r) === v) localStorage.removeItem("vote:"+r.start);
-    else localStorage.setItem("vote:"+r.start, v);
-  }catch(e){}
-  renderView();
+    const res = await fetch("/api/vote", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({key, kind})});
+    const d = await res.json();
+    if(!d.ok) return;
+    votes[key] = {up: d.up, down: d.down};
+    try{ localStorage.setItem("voted:" + key, kind); }catch(e){}
+    renderView(); renderOpList();
+  }catch(e){ alert("서버에 연결할 수 없습니다."); }
+}
+
+function recomHtml(key){
+  const c = counts(key), mine = myVote(key);
+  return `<div class="recom">
+    <span class="n up">${c.up}</span>
+    <button type="button" class="up${mine === "up" ? " on" : ""}" id="vote-up" title="개념" aria-label="개념">${ICON_UP}</button>
+    <button type="button" class="down${mine === "down" ? " on" : ""}" id="vote-down" title="비추" aria-label="비추">${ICON_DOWN}</button>
+    <span class="n down">${c.down}</span>
+  </div>`;
 }
 
 async function refreshStatus(){
   try{
     const res = await fetch("/api/status");
     const d = await res.json();
-    status = d;
     const row = document.getElementById("notice-row");
     const tag = document.getElementById("tag");
     const st = document.getElementById("status-text");
@@ -752,6 +894,24 @@ async function refreshHistory(){
   }catch(e){}
 }
 
+async function refreshBoard(){
+  try{
+    const [o, v] = await Promise.all([
+      fetch("/api/opinions").then(r => r.json()),
+      fetch("/api/votes").then(r => r.json()),
+    ]);
+    opinions = o; votes = v;
+    document.getElementById("op-tab").innerHTML = '전체글<span class="cnt">' + opinions.length + '</span>';
+    renderOpList(); renderView();
+  }catch(e){}
+}
+
+function pagerHtml(pages, cur){
+  let html = "";
+  for(let i = 1; i <= pages; i++) html += `<button type="button" data-p="${i}" class="${i === cur ? "on" : ""}">${i}</button>`;
+  return pages > 1 ? html : "";
+}
+
 function renderList(){
   const body = document.getElementById("ranking-body");
   const pager = document.getElementById("paging");
@@ -766,7 +926,7 @@ function renderList(){
 
   const pages = Math.ceil(list.length / PER_PAGE);
   page = Math.min(page, pages);
-  const cur = curNo();
+  const cur = route().no;
   body.innerHTML = list.slice((page-1)*PER_PAGE, page*PER_PAGE).map(r => {
     const top = r.rank <= 3;
     const cls = (top ? "r"+r.rank : "") + (r.no === cur ? " cur" : "");
@@ -782,23 +942,37 @@ function renderList(){
       <td>${r.duration_human}</td>
     </tr>`;
   }).join("");
-
-  let html = "";
-  for(let i = 1; i <= pages; i++) html += `<button type="button" data-p="${i}" class="${i === page ? "on" : ""}">${i}</button>`;
-  pager.innerHTML = pages > 1 ? html : "";
+  pager.innerHTML = pagerHtml(pages, page);
 }
 
-function renderView(){
-  const box = document.getElementById("view");
-  const r = byNo[curNo() - 1];
-  if(!r || !stats){
-    box.hidden = true;
-    document.title = "경소마고 와이파이 갤러리";
+function renderOpList(){
+  const body = document.getElementById("op-body");
+  const pager = document.getElementById("op-paging");
+  const list = opinions.slice().reverse();
+  if(list.length === 0){
+    body.innerHTML = '<tr><td colspan="6" class="empty">등록된 게시물이 없습니다.</td></tr>';
+    pager.innerHTML = "";
     return;
   }
-  box.hidden = false;
-  document.title = postTitle(r) + " - 경소마고 와이파이 갤러리";
+  const pages = Math.ceil(list.length / PER_PAGE);
+  opPage = Math.min(opPage, pages);
+  const cur = route().id;
+  const today = new Date();
+  body.innerHTML = list.slice((opPage-1)*PER_PAGE, opPage*PER_PAGE).map(p => {
+    const t = new Date(p.time);
+    return `<tr class="${p.id === cur ? "cur" : ""}">
+      <td class="c-no">${p.id}</td>
+      <td class="c-head">의견</td>
+      <td class="title"><a href="#op=${p.id}"><span class="ico"></span>${esc(p.title)}</a></td>
+      <td class="c-writer"><span class="writer">ㅇㅇ</span></td>
+      <td>${sameDay(t, today) ? hms(t).slice(0, 5) : ymd(t)}</td>
+      <td>${counts(opKey(p)).up}</td>
+    </tr>`;
+  }).join("");
+  pager.innerHTML = pagerHtml(pages, opPage);
+}
 
+function wifiViewHtml(r){
   const day = byNo.filter(x => sameDay(x.s, r.s));
   const nth = day.indexOf(r) + 1;
   const dayTotal = day.reduce((sum, x) => sum + x.duration_sec, 0);
@@ -806,29 +980,13 @@ function renderView(){
   const isToday = sameDay(r.s, new Date());
   const ratio = stats.avg_sec ? (r.duration_sec / stats.avg_sec).toFixed(1) : "-";
   const topPct = Math.max(1, Math.ceil(r.rank / records.length * 100));
-  const vote = getVote(r);
-  const up = Math.floor(r.duration_sec / 60) + (vote === "up" ? 1 : 0);
-  const down = vote === "down" ? 1 : 0;
-
-  const midnight = new Date(r.s.getFullYear(), r.s.getMonth(), r.s.getDate()).getTime();
-  const pos = t => Math.min(100, Math.max(0, (t - midnight) / 864000));
-  let quiet = "";
-  if(status && status.quiet_hours_enabled){
-    const [a, b] = status.quiet_hours_range.split("~").map(x => { const [h, m] = x.split(":"); return (h*60 + Number(m)) / 14.4; });
-    quiet = a < b ? `<div class="q" style="left:${a}%;width:${b-a}%"></div>`
-                  : `<div class="q" style="left:0;width:${b}%"></div><div class="q" style="left:${a}%;width:${100-a}%"></div>`;
-  }
-  const segs = day.map(x => {
-    const L = pos(x.s.getTime()), W = pos(x.e.getTime()) - L;
-    return `<a href="#no=${x.no}" class="${x === r ? "me" : ""}" style="left:${L}%;width:${W}%" title="${hms(x.s)} ~ ${hms(x.e)} (${x.duration_human})"></a>`;
-  }).join("");
-
-  box.innerHTML = `
+  const key = wifiKey(r);
+  return `
     <div class="view-head">
       <h3 class="view-title"><span class="h">[${headTag(r.duration_sec)}]</span>${postTitle(r)}</h3>
       <div class="view-meta">
         <div><span class="writer">ㅇㅇ</span><span class="ip">(172.28)</span><span class="bar">|</span>${fullDate(r.s)}</div>
-        <div>인기 ${r.rank}위<span class="bar">|</span>추천 ${up}<span class="bar">|</span>번호 ${r.no}</div>
+        <div>인기 ${r.rank}위<span class="bar">|</span>개념 ${counts(key).up}<span class="bar">|</span>번호 ${r.no}</div>
       </div>
     </div>
     <div class="view-body">
@@ -844,26 +1002,75 @@ function renderView(){
         <tr><th>인기 순위</th><td>${r.rank}위 / 전체 ${records.length}건 <span class="gray">(상위 ${topPct}%)</span></td></tr>
         <tr><th>평균 대비</th><td>평균(${stats.avg_human})의 ${ratio}배</td></tr>
         <tr><th>${isToday ? "오늘" : "이날"} 끊김</th><td>${day.length}회, 합계 ${fmtDuration(dayTotal)}</td></tr>
-        <tr><th>직전 끊김</th><td>${prev ? `복구되고 ${fmtDuration((r.s - prev.e) / 1000)} 만에 또 터짐 <span class="gray">(${fullDate(prev.e)} 복구)</span>` : "첫 기록"}</td></tr>
       </table>
-
-      <div class="tl-wrap">
-        <div class="tl-label">${monthDay(r.s)} 와이파이 상황 <span class="gray">(빨강 = 끊김, 빗금 = 미감시)</span></div>
-        <div class="tl">${quiet}${segs}</div>
-        <div class="tl-scale"><span>0시</span><span>6시</span><span>12시</span><span>18시</span><span>24시</span></div>
-      </div>
     </div>
-    <div class="recom">
-      <button type="button" class="up${vote === "up" ? " on" : ""}" id="vote-up"><span class="n">${up}</span>개념 추천</button>
-      <button type="button" class="down${vote === "down" ? " on" : ""}" id="vote-down"><span class="n">${down}</span>비추</button>
-    </div>
+    ${recomHtml(key)}
     <div class="view-nav">
       ${next ? `<a href="#no=${next.no}"><span class="k">다음글</span>${postTitle(next)} (${next.duration_human})</a>` : ""}
       ${prev ? `<a href="#no=${prev.no}"><span class="k">이전글</span>${postTitle(prev)} (${prev.duration_human})</a>` : ""}
     </div>
     <div class="view-btns"><a href="#">목록</a></div>`;
-  document.getElementById("vote-up").onclick = () => setVote(r, "up");
-  document.getElementById("vote-down").onclick = () => setVote(r, "down");
+}
+
+function opViewHtml(p){
+  const i = opinions.indexOf(p);
+  const prev = opinions[i - 1], next = opinions[i + 1];
+  const key = opKey(p);
+  return `
+    <div class="view-head">
+      <h3 class="view-title"><span class="h">[의견]</span>${esc(p.title)}</h3>
+      <div class="view-meta">
+        <div><span class="writer">ㅇㅇ</span><span class="bar">|</span>${fullDate(new Date(p.time))}</div>
+        <div>개념 ${counts(key).up}<span class="bar">|</span>번호 ${p.id}</div>
+      </div>
+    </div>
+    <div class="view-body"><p class="text">${esc(p.body)}</p></div>
+    ${recomHtml(key)}
+    <div class="view-nav">
+      ${next ? `<a href="#op=${next.id}"><span class="k">다음글</span>${esc(next.title)}</a>` : ""}
+      ${prev ? `<a href="#op=${prev.id}"><span class="k">이전글</span>${esc(prev.title)}</a>` : ""}
+    </div>
+    <div class="view-btns"><a href="#op" class="sub">목록</a><a href="#write">글쓰기</a></div>`;
+}
+
+function renderView(){
+  const box = document.getElementById("view");
+  const rt = route();
+  const gallName = rt.gall === "op" ? OP_TITLE : WIFI_TITLE;
+  let html = null, title = null, key = null;
+  if(rt.no && stats){
+    const r = byNo[rt.no - 1];
+    if(r){ html = wifiViewHtml(r); title = postTitle(r); key = wifiKey(r); }
+  } else if(rt.id){
+    const p = opinions.find(x => x.id === rt.id);
+    if(p){ html = opViewHtml(p); title = p.title; key = opKey(p); }
+  }
+  if(!html){
+    box.hidden = true;
+    document.title = rt.write ? "글쓰기 - " + gallName : gallName;
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = html;
+  document.title = title + " - " + gallName;
+  document.getElementById("vote-up").onclick = () => vote(key, "up");
+  document.getElementById("vote-down").onclick = () => vote(key, "down");
+}
+
+function applyRoute(){
+  const rt = route();
+  const op = rt.gall === "op";
+  document.getElementById("wifi-sec").hidden = op;
+  document.getElementById("op-sec").hidden = !op || !!rt.write;
+  document.getElementById("write").hidden = !rt.write;
+  document.getElementById("gall-title").textContent = op ? OP_TITLE : WIFI_TITLE;
+  document.getElementById("foot-desc").textContent = op
+    ? "사이트에 대한 의견을 자유롭게 남겨주세요. 글쓴이는 모두 익명으로 표시됩니다."
+    : "이 갤러리는 기숙사 와이파이 끊김을 자동으로 기록합니다. 인기순은 오래 끊긴 순입니다.";
+  document.getElementById("nav-wifi").className = op ? "" : "on";
+  document.getElementById("nav-op").className = op ? "on" : "";
+  if(rt.write) document.getElementById("w-msg").textContent = "";
+  renderView(); renderList(); renderOpList();
 }
 
 function updateButtons(){
@@ -888,16 +1095,45 @@ document.getElementById("paging").onclick = e => {
   const p = e.target.dataset.p;
   if(p){ page = Number(p); renderList(); }
 };
+document.getElementById("op-paging").onclick = e => {
+  const p = e.target.dataset.p;
+  if(p){ opPage = Number(p); renderOpList(); }
+};
+
+document.getElementById("w-submit").onclick = async () => {
+  const btn = document.getElementById("w-submit");
+  const msg = document.getElementById("w-msg");
+  const titleEl = document.getElementById("w-title");
+  const bodyEl = document.getElementById("w-body");
+  const title = titleEl.value.trim(), body = bodyEl.value.trim();
+  if(!title || !body){ msg.textContent = "제목과 내용을 모두 입력해주세요."; return; }
+  btn.disabled = true; msg.textContent = "";
+  try{
+    const res = await fetch("/api/opinions", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({title, body})});
+    const d = await res.json();
+    if(!d.ok){ msg.textContent = d.error || "등록에 실패했습니다."; return; }
+    titleEl.value = ""; bodyEl.value = "";
+    await refreshBoard();
+    location.hash = "#op=" + d.id;
+  }catch(e){
+    msg.textContent = "서버에 연결할 수 없습니다.";
+  }finally{
+    btn.disabled = false;
+  }
+};
+
 window.onhashchange = () => {
-  renderView(); renderList();
+  applyRoute();
   const box = document.getElementById("view");
   if(box.hidden) window.scrollTo(0, 0); else box.scrollIntoView();
 };
 updateButtons();
+applyRoute();
 
-refreshStatus(); refreshHistory();
+refreshStatus(); refreshHistory(); refreshBoard();
 setInterval(refreshStatus, 2000);
 setInterval(refreshHistory, 5000);
+setInterval(refreshBoard, 5000);
 setInterval(tickElapsed, 500);
 </script>
 </body>
@@ -929,6 +1165,37 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(build_status_payload())
         elif self.path == "/api/history":
             self._send_json(build_history_payload())
+        elif self.path == "/api/opinions":
+            with _lock:
+                self._send_json(OPINIONS["posts"])
+        elif self.path == "/api/votes":
+            with _lock:
+                self._send_json(VOTES)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0 or length > MAX_REQUEST_BYTES:
+            self._send_json({"ok": False, "error": "요청이 너무 큽니다."})
+            return
+        try:
+            req = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(req, dict):
+                raise ValueError
+        except Exception:
+            self._send_json({"ok": False, "error": "잘못된 요청입니다."})
+            return
+        # Cloudflare 터널을 거치면 실제 접속자 IP는 이 헤더에 들어있음
+        ip = self.headers.get("CF-Connecting-IP") or self.client_address[0]
+        if self.path == "/api/opinions":
+            self._send_json(add_opinion(req.get("title"), req.get("body"), ip))
+        elif self.path == "/api/vote":
+            self._send_json(add_vote(req.get("key"), req.get("kind")))
         else:
             self.send_response(404)
             self.end_headers()
