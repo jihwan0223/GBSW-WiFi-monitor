@@ -513,8 +513,9 @@ def add_opinion(title, body, ip):
     return {"ok": True, "id": new_id}
 
 
-def add_vote(key, kind):
-    if kind not in ("up", "down") or not isinstance(key, str):
+def add_vote(key, kind, undo=None):
+    # undo: 취소할 이전 투표 (같은 버튼 다시 누르면 kind 없이 undo만 옴)
+    if kind not in ("up", "down", None) or undo not in ("up", "down", None) or not (kind or undo) or not isinstance(key, str):
         return {"ok": False}
     with _lock:
         if key.startswith("w:"):
@@ -526,7 +527,10 @@ def add_vote(key, kind):
         if not valid:
             return {"ok": False}
         counts = VOTES.setdefault(key, {"up": 0, "down": 0})
-        counts[kind] += 1
+        if undo:
+            counts[undo] = max(0, counts[undo] - 1)
+        if kind:
+            counts[kind] += 1
         save_json(VOTE_FILE, VOTES)
         return {"ok": True, "up": counts["up"], "down": counts["down"]}
 
@@ -667,22 +671,48 @@ HTML_PAGE = """<!doctype html>
 
   .footer{margin-top:24px; padding-top:12px; border-top:1px solid #ddd; color:#999; font-size:11px; text-align:center; line-height:1.7;}
 
+  tr.pin td{background:#fffaf3;}
+  .tag.hot{background:#e05a00;}
+
+  /* 폰: 목록을 "제목 한 줄 + 정보 한 줄"로 */
   @media (max-width:640px){
-    .list{table-layout:auto;}
-    th.col-writer,th.col-head,th.col-time,td.c-writer,td.c-head,td.c-time{display:none;}
-    .list td.title{white-space:normal; line-height:1.4;}
+    body{font-size:14px;}
+    .topbar .inner,.gnb .inner{padding:0 10px;}
+    .gnb .inner{gap:16px;}
+    .gnb a{font-size:13px;}
+    .wrap{padding:12px 10px 32px;}
+    .gall-title{font-size:18px;}
+    .tab-row{flex-wrap:wrap;}
+    .tabs button{padding:8px 10px;}
     .info-box{grid-template-columns:repeat(2,1fr);}
     .info-box div:nth-child(2){border-right:none;}
     .info-box div:nth-child(-n+2){border-bottom:1px solid #e1e1e1;}
-    .list td,.list th{font-size:12px;}
-    .detail th{width:90px;}
+
+    .list,.list tbody{display:block; width:100%;}
+    .list thead{display:none;}
+    .list tr{display:flex; flex-wrap:wrap; align-items:center; gap:3px 8px; padding:10px 4px; border-bottom:1px solid #eee;}
+    .list td{border:none; padding:0; font-size:12px; color:#999; background:none !important;}
+    .list td.title{order:-1; width:100%; padding-left:0; white-space:normal; font-size:14px; line-height:1.45;}
+    .list td.c-no,.list td.c-writer,.list td.c-end{display:none;}
+    .list td.c-vote::before{content:"개념 ";}
+    .list td.empty{width:100%; text-align:center;}
+    tr.notice td.title{order:0; width:auto; flex:1; color:#333;}
+    tr.notice{background:#fff8f8;} tr.notice.ok{background:#f6fbf6;} tr.notice.night{background:#f5f7fd;}
+    tr.pin{background:#fffaf3;} tr.cur{background:#eef1fa;}
+    .list tbody tr:hover{background:#f5f7fb;}
+
+    .view-head{padding:10px 4px;}
+    .view-title{font-size:16px;}
+    .view-body{padding:16px 4px 4px;}
+    .detail th{width:84px;}
+    .write input,.write textarea{font-size:16px;}
   }
 </style>
 </head>
 <body>
   <div class="topbar"><div class="inner"><a class="logo" href="#">gb<span>inside</span></a></div></div>
   <div class="gnb"><div class="inner">
-    <a href="#" id="nav-wifi">갤러리</a><span>마이너갤</span><span>의견</span><span>인물</span><span>이벤트</span><a href="#op" id="nav-op">광고문의</a>
+    <a href="#" id="nav-wifi">갤러리</a><a href="#op" id="nav-op">마이너갤</a>
   </div></div>
 
   <div class="wrap">
@@ -693,9 +723,9 @@ HTML_PAGE = """<!doctype html>
     <div class="view" id="view" hidden></div>
 
     <div class="write" id="write" hidden>
-      <div class="write-head">의견 글쓰기</div>
+      <div class="write-head">글쓰기</div>
       <input id="w-title" maxlength="40" placeholder="제목을 입력해 주세요.">
-      <textarea id="w-body" maxlength="2000" placeholder="의견을 자유롭게 남겨주세요."></textarea>
+      <textarea id="w-body" maxlength="2000" placeholder="내용을 입력해 주세요."></textarea>
       <div class="write-foot">
         <span class="write-msg" id="w-msg"></span>
         <div class="btns"><a href="#op">취소</a><button type="button" id="w-submit">등록</button></div>
@@ -725,8 +755,8 @@ HTML_PAGE = """<!doctype html>
         <button type="button" id="tab-best">개념글</button>
       </div>
       <div class="sort">
-        <button type="button" id="sort-pop" class="on">인기순</button>
-        <button type="button" id="sort-date">날짜순 <span class="arrow" id="date-arrow">▼</span></button>
+        <button type="button" id="sort-date" class="on">날짜순 <span class="arrow" id="date-arrow">▼</span></button>
+        <button type="button" id="sort-pop">인기순</button>
       </div>
     </div>
     <div class="info-box">
@@ -746,6 +776,7 @@ HTML_PAGE = """<!doctype html>
           <td class="title" colspan="7"><span id="status-text">확인 중…</span><span class="sub-detail" id="status-detail"></span></td>
         </tr>
       </tbody>
+      <tbody id="pin-body"></tbody>
       <tbody id="ranking-body">
         <tr><td colspan="8" class="empty">기록 불러오는 중…</td></tr>
       </tbody>
@@ -763,7 +794,7 @@ HTML_PAGE = """<!doctype html>
 const PER_PAGE = 30;
 const WEEK = "일월화수목금토";
 const WIFI_TITLE = "경소마고 와이파이 갤러리";  // 와이파이 갤러리 이름
-const OP_TITLE = "의견 갤러리";                // 의견갤 이름
+const OP_TITLE = "경소마고 마이너 갤러리";      // 마이너갤 이름
 // 개념/비추 버튼 아이콘
 const ICON_UP = '<svg viewBox="0 0 100 100" width="56" height="56" aria-hidden="true"><circle cx="50" cy="50" r="50" fill="#3d4a92"/><polygon points="50.0,15.0 56.5,31.1 73.8,32.3 60.5,43.4 64.7,60.2 50.0,51.0 35.3,60.2 39.5,43.4 26.2,32.3 43.5,31.1" fill="#ffcc00" stroke="#ffcc00" stroke-width="6" stroke-linejoin="round"/><text x="50" y="87" text-anchor="middle" font-size="21" font-weight="bold" fill="#fff">개념</text></svg>';
 const ICON_DOWN = '<svg viewBox="0 0 100 100" width="56" height="56" aria-hidden="true"><circle cx="50" cy="50" r="50" fill="#a6a6a6"/><polygon points="42,16 58,16 58,38 71,38 50,63 29,38 42,38" fill="#fff" stroke="#fff" stroke-width="5" stroke-linejoin="round"/><text x="50" y="87" text-anchor="middle" font-size="21" font-weight="bold" fill="#fff">비추</text></svg>';
@@ -773,7 +804,7 @@ let records = [];        // 서버가 준 순서 (오래 끊긴 순, rank 포함
 let byNo = [];           // 오래된 순. 글번호 = 인덱스+1
 let opinions = [];       // 의견갤 글 (오래된 순)
 let votes = {};          // 글별 개념/비추 수 {"w:시작시각" 또는 "o:의견번호": {up, down}}
-let sortMode = "pop";    // "pop" = 인기순(오래 끊긴 순), "date" = 날짜순
+let sortMode = "date";   // "pop" = 인기순(오래 끊긴 순), "date" = 날짜순
 let dateDesc = true;     // 날짜순일 때 true = 최신순 ▼, false = 오래된순 ▲
 let tab = "all";         // "all" = 전체글, "best" = 개념글(1~3위)
 let page = 1;            // 와이파이 목록 현재 페이지
@@ -820,15 +851,19 @@ const opKey = p => "o:" + p.id;
 function counts(key){ return votes[key] || {up: 0, down: 0}; }
 function myVote(key){ try{ return localStorage.getItem("voted:" + key); }catch(e){ return null; } }
 
+// 같은 버튼 다시 누르면 취소, 반대 버튼 누르면 옮겨감
 async function vote(key, kind){
   const mine = myVote(key);
-  if(mine){ alert("이미 " + (mine === "up" ? "개념" : "비추") + " 누른 글입니다."); return; }
+  const add = mine === kind ? null : kind;
   try{
-    const res = await fetch("/api/vote", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({key, kind})});
+    const res = await fetch("/api/vote", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({key, kind: add, undo: mine})});
     const d = await res.json();
     if(!d.ok) return;
     votes[key] = {up: d.up, down: d.down};
-    try{ localStorage.setItem("voted:" + key, kind); }catch(e){}
+    try{
+      if(add) localStorage.setItem("voted:" + key, add);
+      else localStorage.removeItem("voted:" + key);
+    }catch(e){}
     renderView(); renderOpList();
   }catch(e){ alert("서버에 연결할 수 없습니다."); }
 }
@@ -912,9 +947,28 @@ function pagerHtml(pages, cur){
   return pages > 1 ? html : "";
 }
 
+function rowHtml(r, pin, cur){
+  const top = r.rank <= 3;
+  const cls = (top ? "r"+r.rank : "") + (pin ? " pin" : "") + (r.no === cur ? " cur" : "");
+  return `<tr class="${cls}">
+    <td class="c-no">${pin ? '<span class="tag hot">인기</span>' : r.no}</td>
+    <td class="c-head${r.duration_sec >= 600 ? " big" : ""}">${pin ? r.rank + "위" : headTag(r.duration_sec)}</td>
+    <td class="title"><a href="#no=${r.no}"><span class="ico${top ? " best" : ""}"></span>${top ? '<span class="best">개념</span>' : ""}${postTitle(r)}</a><span class="cmt">[${Math.floor(r.duration_sec/60)}]</span></td>
+    <td class="c-writer"><span class="writer">ㅇㅇ</span><span class="ip">(172.28)</span></td>
+    <td class="c-date">${ymd(r.s)}</td>
+    <td class="c-time">${hms(r.s)}</td>
+    <td class="c-time c-end">${sameDay(r.s, r.e) ? hms(r.e) : fullDate(r.e)}</td>
+    <td class="c-dur">${r.duration_human}</td>
+  </tr>`;
+}
+
 function renderList(){
   const body = document.getElementById("ranking-body");
   const pager = document.getElementById("paging");
+  const cur = route().no;
+  // 전체글 맨 위에 인기 1~3위 고정
+  const pins = tab === "all" ? records.filter(r => r.rank <= 3).sort((a, b) => a.rank - b.rank) : [];
+  document.getElementById("pin-body").innerHTML = pins.map(r => rowHtml(r, true, cur)).join("");
   let list = tab === "best" ? records.filter(r => r.rank <= 3) : records.slice();
   if(list.length === 0){
     body.innerHTML = '<tr><td colspan="8" class="empty">등록된 게시물이 없습니다.</td></tr>';
@@ -926,22 +980,7 @@ function renderList(){
 
   const pages = Math.ceil(list.length / PER_PAGE);
   page = Math.min(page, pages);
-  const cur = route().no;
-  body.innerHTML = list.slice((page-1)*PER_PAGE, page*PER_PAGE).map(r => {
-    const top = r.rank <= 3;
-    const cls = (top ? "r"+r.rank : "") + (r.no === cur ? " cur" : "");
-    const head = headTag(r.duration_sec);
-    return `<tr class="${cls}">
-      <td class="c-no">${r.no}</td>
-      <td class="c-head${r.duration_sec >= 600 ? " big" : ""}">${head}</td>
-      <td class="title"><a href="#no=${r.no}"><span class="ico${top ? " best" : ""}"></span>${top ? '<span class="best">개념</span>' : ""}${postTitle(r)}</a><span class="cmt">[${Math.floor(r.duration_sec/60)}]</span></td>
-      <td class="c-writer"><span class="writer">ㅇㅇ</span><span class="ip">(172.28)</span></td>
-      <td>${ymd(r.s)}</td>
-      <td class="c-time">${hms(r.s)}</td>
-      <td class="c-time">${sameDay(r.s, r.e) ? hms(r.e) : fullDate(r.e)}</td>
-      <td>${r.duration_human}</td>
-    </tr>`;
-  }).join("");
+  body.innerHTML = list.slice((page-1)*PER_PAGE, page*PER_PAGE).map(r => rowHtml(r, false, cur)).join("");
   pager.innerHTML = pagerHtml(pages, page);
 }
 
@@ -962,11 +1001,11 @@ function renderOpList(){
     const t = new Date(p.time);
     return `<tr class="${p.id === cur ? "cur" : ""}">
       <td class="c-no">${p.id}</td>
-      <td class="c-head">의견</td>
+      <td class="c-head">일반</td>
       <td class="title"><a href="#op=${p.id}"><span class="ico"></span>${esc(p.title)}</a></td>
       <td class="c-writer"><span class="writer">ㅇㅇ</span></td>
-      <td>${sameDay(t, today) ? hms(t).slice(0, 5) : ymd(t)}</td>
-      <td>${counts(opKey(p)).up}</td>
+      <td class="c-date">${sameDay(t, today) ? hms(t).slice(0, 5) : ymd(t)}</td>
+      <td class="c-vote">${counts(opKey(p)).up}</td>
     </tr>`;
   }).join("");
   pager.innerHTML = pagerHtml(pages, opPage);
@@ -1018,7 +1057,7 @@ function opViewHtml(p){
   const key = opKey(p);
   return `
     <div class="view-head">
-      <h3 class="view-title"><span class="h">[의견]</span>${esc(p.title)}</h3>
+      <h3 class="view-title"><span class="h">[일반]</span>${esc(p.title)}</h3>
       <div class="view-meta">
         <div><span class="writer">ㅇㅇ</span><span class="bar">|</span>${fullDate(new Date(p.time))}</div>
         <div>개념 ${counts(key).up}<span class="bar">|</span>번호 ${p.id}</div>
@@ -1065,8 +1104,8 @@ function applyRoute(){
   document.getElementById("write").hidden = !rt.write;
   document.getElementById("gall-title").textContent = op ? OP_TITLE : WIFI_TITLE;
   document.getElementById("foot-desc").textContent = op
-    ? "사이트에 대한 의견을 자유롭게 남겨주세요. 글쓴이는 모두 익명으로 표시됩니다."
-    : "이 갤러리는 기숙사 와이파이 끊김을 자동으로 기록합니다. 인기순은 오래 끊긴 순입니다.";
+    ? "누구나 자유롭게 글을 쓸 수 있습니다. 글쓴이는 모두 익명으로 표시됩니다."
+    : "이 갤러리는 기숙사 와이파이 끊김을 자동으로 기록합니다. 인기글은 오래 끊긴 순입니다.";
   document.getElementById("nav-wifi").className = op ? "" : "on";
   document.getElementById("nav-op").className = op ? "on" : "";
   if(rt.write) document.getElementById("w-msg").textContent = "";
@@ -1195,7 +1234,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/opinions":
             self._send_json(add_opinion(req.get("title"), req.get("body"), ip))
         elif self.path == "/api/vote":
-            self._send_json(add_vote(req.get("key"), req.get("kind")))
+            self._send_json(add_vote(req.get("key"), req.get("kind"), req.get("undo")))
         else:
             self.send_response(404)
             self.end_headers()
